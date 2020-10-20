@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/micro/micro/v3/service/store"
 )
@@ -117,29 +118,32 @@ func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string
 		}
 		switch v := m[fieldName].(type) {
 		case string:
-			bs := []byte{}
+			runes := []rune{}
 			if i.ReverseOrder {
 				for _, char := range v {
-					bs = append(bs, byte(math.MaxInt32-int32(char)))
+					runes = append(runes, utf8.MaxRune-char)
 				}
 			} else {
-				bs = []byte(v)
+				for _, char := range v {
+					runes = append(runes, char)
+				}
 			}
 
 			// padding the string to a fixed length
-			if len(bs) < i.StringOrderPadLength {
-				pad := make([]byte, i.StringOrderPadLength-len(bs))
-				for j := range pad {
+			if len(runes) < i.StringOrderPadLength {
+				pad := []rune{}
+				for j := 0; j < i.StringOrderPadLength-len(runes); j++ {
 					if i.ReverseOrder {
-						pad[j] = math.MaxInt8
+						pad = append(pad, utf8.MaxRune)
 					} else {
-						pad[j] = 0
+						pad = append(pad, 'a')
 					}
 				}
-				bs = append(bs, pad...)
+				runes = append(runes, pad...)
 			}
 
 			var keyPart string
+			bs := []byte(string(runes))
 			if i.ReverseOrder {
 				// base32 hex should be order preserving
 				// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
@@ -148,6 +152,7 @@ func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string
 				keyPart = strings.ReplaceAll(string(dst), "=", "0")
 			} else {
 				keyPart = string(bs)
+
 			}
 			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, keyPart, id)
 		case float64:
@@ -170,8 +175,9 @@ type DB interface {
 }
 
 func NewDB(store store.Store, namespace string, indexes []Index) DB {
+	debug := false
 	return &db{
-		store, indexes, true, namespace,
+		store, indexes, debug, namespace,
 	}
 }
 

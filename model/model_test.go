@@ -109,7 +109,7 @@ func TestOrderingStrings(t *testing.T) {
 	for _, c := range cazes {
 		idIndex := ByEquality("tag")
 		idIndex.ReverseOrder = c.reverse
-		idIndex.StringOrderPadLength = 10
+		idIndex.StringOrderPadLength = 12
 		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
 		for _, key := range c.tags {
 			err := db.Save(User{
