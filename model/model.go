@@ -7,6 +7,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/micro/micro/v3/service/store"
@@ -22,6 +23,7 @@ type db struct {
 	indexes []Index
 	entity  interface{}
 	fields  []string
+	debug   bool
 }
 
 func (d *db) Save(instance interface{}) error {
@@ -42,6 +44,9 @@ func (d *db) Save(instance interface{}) error {
 			return fmt.Errorf("ID of objects must marshal to JSON key 'ID' or 'id'")
 		}
 	}
+	if d.debug {
+		fmt.Printf("Saving key %v, value: %v\n", id, string(js))
+	}
 	err = d.store.Write(&store.Record{
 		Key:   id,
 		Value: js,
@@ -50,8 +55,12 @@ func (d *db) Save(instance interface{}) error {
 		return err
 	}
 	for _, index := range d.indexes {
+		k := indexToSaveKey(index, id, m)
+		if d.debug {
+			fmt.Printf("Saving key %v, value: %v\n", k, string(js))
+		}
 		err = d.store.Write(&store.Record{
-			Key:   indexToSaveKey(index, id, m),
+			Key:   k,
 			Value: js,
 		})
 		if err != nil {
@@ -62,16 +71,26 @@ func (d *db) Save(instance interface{}) error {
 }
 
 func (d *db) List(query Query, resultSlicePointer interface{}) error {
+	if len(d.indexes) == 0 {
+		return errors.New("No indexes found")
+	}
 	for _, index := range d.indexes {
 		if indexMatchesQuery(index, query) {
-			recs, err := d.store.Read(queryToListKey(query), store.ReadPrefix())
+			k := queryToListKey(query)
+			if d.debug {
+				fmt.Printf("Listing key %v\n", k)
+			}
+			recs, err := d.store.Read(k, store.ReadPrefix())
 			if err != nil {
 				return err
 			}
 			// @todo speed this up with an actual buffer
 			jsBuffer := []byte("[")
-			for _, rec := range recs {
+			for i, rec := range recs {
 				jsBuffer = append(jsBuffer, rec.Value...)
+				if i < len(recs)-1 {
+					jsBuffer = append(jsBuffer, []byte(",")...)
+				}
 			}
 			jsBuffer = append(jsBuffer, []byte("]")...)
 			return json.Unmarshal(jsBuffer, resultSlicePointer)
@@ -92,7 +111,7 @@ func queryToListKey(q Query) string {
 }
 
 func indexToSaveKey(i Index, id string, m map[string]interface{}) string {
-	return fmt.Sprintf("by%v:%v", i.FieldName, id)
+	return fmt.Sprintf("by%v:%v:%v", i.FieldName, m[i.FieldName], id)
 }
 
 // DB represents a place where data can be saved to and
@@ -104,7 +123,7 @@ type DB interface {
 
 func NewDB(store store.Store, entity interface{}, indexes []Index) DB {
 	return &db{
-		store, indexes, entity, nil,
+		store, indexes, entity, nil, true,
 	}
 }
 
