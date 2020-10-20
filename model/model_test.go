@@ -97,6 +97,10 @@ func TestOrderingStrings(t *testing.T) {
 			reverse: false,
 		},
 		{
+			tags:    []string{"2", "1"},
+			reverse: true,
+		},
+		{
 
 			tags:    []string{"abcd", "abcde", "abcdf"},
 			reverse: false,
@@ -105,10 +109,18 @@ func TestOrderingStrings(t *testing.T) {
 			tags:    []string{"abcd", "abcde", "abcdf"},
 			reverse: true,
 		},
+		{
+			tags:    []string{"2", "abcd", "abcde", "abcdf", "1"},
+			reverse: false,
+		},
+		{
+			tags:    []string{"2", "abcd", "abcde", "abcdf", "1"},
+			reverse: true,
+		},
 	}
 	for _, c := range cazes {
 		idIndex := ByEquality("tag")
-		idIndex.ReverseOrder = c.reverse
+		idIndex.Desc = c.reverse
 		idIndex.StringOrderPadLength = 12
 		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
 		for _, key := range c.tags {
@@ -122,7 +134,7 @@ func TestOrderingStrings(t *testing.T) {
 		}
 		users := []User{}
 		q := Equals("tag", nil)
-		q.ReverseOrder = c.reverse
+		q.Desc = c.reverse
 		err := db.List(q, &users)
 		if err != nil {
 			t.Fatal(err)
@@ -140,6 +152,70 @@ func TestOrderingStrings(t *testing.T) {
 					userTags = append(userTags, v.Tag)
 				}
 				t.Fatalf("Should be %v, got %v, is reverse: %v", tags, userTags, c.reverse)
+			}
+		}
+	}
+
+}
+
+func reverseInt(is []int) {
+	last := len(is) - 1
+	for i := 0; i < len(is)/2; i++ {
+		is[i], is[last-i] = is[last-i], is[i]
+	}
+}
+
+func TestOrderingNumbers(t *testing.T) {
+	type caze struct {
+		dates   []int
+		reverse bool
+	}
+	cazes := []caze{
+		{
+			dates:   []int{20, 30},
+			reverse: false,
+		},
+		{
+			dates:   []int{20, 30},
+			reverse: true,
+		},
+	}
+	for _, c := range cazes {
+		idIndex := ByEquality("created")
+		idIndex.Desc = c.reverse
+		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
+		for _, key := range c.dates {
+			err := db.Save(User{
+				ID:      uuid.Must(uuid.NewV4()).String(),
+				Created: int64(key),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		users := []User{}
+		q := Equals("created", nil)
+		q.Desc = c.reverse
+		err := db.List(q, &users)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		dates := sort.IntSlice(c.dates)
+		sort.Sort(dates)
+		if c.reverse {
+			reverseInt([]int(dates))
+		}
+		if len(users) != len(dates) {
+			t.Fatalf("Expected %v, got %v", len(dates), len(users))
+		}
+		for i, date := range dates {
+			if users[i].Created != int64(date) {
+				userDates := []int{}
+				for _, v := range users {
+					userDates = append(userDates, int(v.Created))
+				}
+				t.Fatalf("Should be %v, got %v, is reverse: %v", dates, userDates, c.reverse)
 			}
 		}
 	}

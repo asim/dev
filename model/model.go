@@ -96,7 +96,7 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 }
 
 func indexMatchesQuery(i Index, q Query) bool {
-	if i.Type == q.Type && i.ReverseOrder == q.ReverseOrder {
+	if i.Type == q.Type && i.Ordered == q.Ordered && i.Desc == q.Desc {
 		return true
 	}
 	return false
@@ -118,45 +118,11 @@ func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string
 		}
 		switch v := m[fieldName].(type) {
 		case string:
-			runes := []rune{}
-			if i.ReverseOrder {
-				for _, char := range v {
-					runes = append(runes, utf8.MaxRune-char)
-				}
-			} else {
-				for _, char := range v {
-					runes = append(runes, char)
-				}
+			if i.Ordered {
+				return d.getOrderedStringFieldKey(i, id, v)
 			}
-
-			// padding the string to a fixed length
-			if len(runes) < i.StringOrderPadLength {
-				pad := []rune{}
-				for j := 0; j < i.StringOrderPadLength-len(runes); j++ {
-					if i.ReverseOrder {
-						pad = append(pad, utf8.MaxRune)
-					} else {
-						pad = append(pad, 'a')
-					}
-				}
-				runes = append(runes, pad...)
-			}
-
-			var keyPart string
-			bs := []byte(string(runes))
-			if i.ReverseOrder {
-				// base32 hex should be order preserving
-				// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
-				dst := make([]byte, base32.HexEncoding.EncodedLen(len(bs)))
-				base32.HexEncoding.Encode(dst, bs)
-				keyPart = strings.ReplaceAll(string(dst), "=", "0")
-			} else {
-				keyPart = string(bs)
-
-			}
-			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, keyPart, id)
 		case float64:
-			if i.ReverseOrder {
+			if i.Desc {
 				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, math.MaxFloat64-v, id)
 			}
 			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, v, id)
@@ -165,6 +131,47 @@ func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string
 		return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, m[i.FieldName], id)
 	}
 	return ""
+}
+
+// since field keys
+func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
+	runes := []rune{}
+	if i.Desc {
+		for _, char := range fieldValue {
+			runes = append(runes, utf8.MaxRune-char)
+		}
+	} else {
+		for _, char := range fieldValue {
+			runes = append(runes, char)
+		}
+	}
+
+	// padding the string to a fixed length
+	if len(runes) < i.StringOrderPadLength {
+		pad := []rune{}
+		for j := 0; j < i.StringOrderPadLength-len(runes); j++ {
+			if i.Desc {
+				pad = append(pad, utf8.MaxRune)
+			} else {
+				pad = append(pad, 'a')
+			}
+		}
+		runes = append(runes, pad...)
+	}
+
+	var keyPart string
+	bs := []byte(string(runes))
+	if i.Desc {
+		// base32 hex should be order preserving
+		// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
+		dst := make([]byte, base32.HexEncoding.EncodedLen(len(bs)))
+		base32.HexEncoding.Encode(dst, bs)
+		keyPart = strings.ReplaceAll(string(dst), "=", "0")
+	} else {
+		keyPart = string(bs)
+
+	}
+	return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, keyPart, id)
 }
 
 // DB represents a place where data can be saved to and
@@ -185,8 +192,13 @@ type Index struct {
 	FieldName string
 	// Type of index, eg. equality
 	Type string
-	// Default order is ASC, ReverseOrder means ordering is DESC
-	ReverseOrder bool
+
+	// Ordered or unordered keys. Ordered keys are padded.
+	// Default is true. This option only exists for strings, where ordering
+	// comes at the cost of having rather long padded keys.
+	Ordered bool
+	// Default order is ascending, if Desc is true it is descending
+	Desc bool
 	// Strings for ordering will be padded to a fix length
 	// Not a useful property for Querying, please ignore this at query time.
 	// Number is in bytes, not string characters. Choose a sufficiently big one.
@@ -205,6 +217,7 @@ func ByEquality(fieldName string) Index {
 	return Index{
 		FieldName: fieldName,
 		Type:      indexTypeEq,
+		Ordered:   true,
 	}
 }
 
@@ -222,6 +235,7 @@ func Equals(fieldName string, value interface{}) Query {
 		Index: Index{
 			Type:      queryTypeEq,
 			FieldName: fieldName,
+			Ordered:   true,
 		},
 		Value: value,
 	}
