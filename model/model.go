@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/micro/micro/v3/service/store"
 )
@@ -48,13 +49,10 @@ func (d *db) Save(instance interface{}) error {
 			return fmt.Errorf("ID of objects must marshal to JSON key 'ID' or 'id'")
 		}
 	}
-	if d.debug {
-		fmt.Printf("Saving key %v, value: %v\n", id, string(js))
-	}
 	for _, index := range d.indexes {
 		k := d.indexToSaveKey(index, id, m)
 		if d.debug {
-			fmt.Printf("Saving key %v, value: %v\n", k, string(js))
+			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
 		}
 		err = d.store.Write(&store.Record{
 			Key:   k,
@@ -113,41 +111,52 @@ func (d *db) queryToListKey(q Query) string {
 func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string {
 	switch i.Type {
 	case indexTypeEq:
-		if i.ReverseOrder {
-			fieldName := i.OrderField
-			if len(fieldName) == 0 {
-				fieldName = "id"
-			}
-			switch v := m[fieldName].(type) {
-			case string:
-				bs := []byte{}
+		fieldName := i.FieldName
+		if len(fieldName) == 0 {
+			fieldName = "id"
+		}
+		switch v := m[fieldName].(type) {
+		case string:
+			bs := []byte{}
+			if i.ReverseOrder {
 				for _, char := range v {
 					bs = append(bs, byte(math.MaxInt32-int32(char)))
 				}
-				// padding the string to a fixed length
-				if len(bs) < i.StringOrderPadLength {
-					pad := make([]byte, i.StringOrderPadLength-len(bs))
-					for j := range pad {
-						if i.ReverseOrder {
-							pad[j] = math.MaxInt8
-						} else {
-							pad[j] = 0
-						}
-					}
-					bs = append(bs, pad...)
-				}
+			} else {
+				bs = []byte(v)
+			}
 
+			// padding the string to a fixed length
+			if len(bs) < i.StringOrderPadLength {
+				pad := make([]byte, i.StringOrderPadLength-len(bs))
+				for j := range pad {
+					if i.ReverseOrder {
+						pad[j] = math.MaxInt8
+					} else {
+						pad[j] = 0
+					}
+				}
+				bs = append(bs, pad...)
+			}
+
+			var keyPart string
+			if i.ReverseOrder {
 				// base32 hex should be order preserving
 				// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
-				dst := make([]byte, base32.HexEncoding.DecodedLen(len(bs)))
+				dst := make([]byte, base32.HexEncoding.EncodedLen(len(bs)))
 				base32.HexEncoding.Encode(dst, bs)
-				// @todo id will ruin the ordering here ie
-				// as the second part is not fixed length
-				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, string(dst), id)
-			case float64:
+				keyPart = strings.ReplaceAll(string(dst), "=", "0")
+			} else {
+				keyPart = string(bs)
+			}
+			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, keyPart, id)
+		case float64:
+			if i.ReverseOrder {
 				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, math.MaxFloat64-v, id)
 			}
+			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, v, id)
 		}
+
 		return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, m[i.FieldName], id)
 	}
 	return ""
@@ -172,8 +181,6 @@ type Index struct {
 	Type string
 	// Default order is ASC, ReverseOrder means ordering is DESC
 	ReverseOrder bool
-	// eg. order based on "age". Defaults to "id".
-	OrderField string
 	// Strings for ordering will be padded to a fix length
 	// Not a useful property for Querying, please ignore this at query time.
 	// Number is in bytes, not string characters. Choose a sufficiently big one.

@@ -13,6 +13,7 @@ type User struct {
 	Age     int    `json:"age"`
 	HasPet  bool   `json:"hasPet"`
 	Created int64  `json:"created"`
+	Tag     string `json:"tag"`
 	Updated int64  `json:"updated"`
 }
 
@@ -87,46 +88,57 @@ func reverse(ss []string) {
 
 func TestOrderingStrings(t *testing.T) {
 	type caze struct {
-		keys    []string
+		tags    []string
 		reverse bool
 	}
 	cazes := []caze{
 		{
-			keys:    []string{"1", "2"},
+			tags:    []string{"1", "2"},
 			reverse: false,
 		},
 		{
-			keys:    []string{"abcd", "abcde", "abcdf"},
+
+			tags:    []string{"abcd", "abcde", "abcdf"},
+			reverse: false,
+		},
+		{
+			tags:    []string{"abcd", "abcde", "abcdf"},
 			reverse: true,
 		},
 	}
 	for _, c := range cazes {
-		idIndex := ByEquality("id")
+		idIndex := ByEquality("tag")
 		idIndex.ReverseOrder = c.reverse
+		idIndex.StringOrderPadLength = 10
 		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
-		for _, key := range c.keys {
+		for _, key := range c.tags {
 			err := db.Save(User{
-				ID: key,
+				ID:  uuid.Must(uuid.NewV4()).String(),
+				Tag: key,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
 		users := []User{}
-		q := Equals("id", nil)
+		q := Equals("tag", nil)
 		q.ReverseOrder = c.reverse
 		err := db.List(q, &users)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		keys := sort.StringSlice(c.keys)
+		tags := sort.StringSlice(c.tags)
 		if c.reverse {
-			reverse(keys)
+			reverse(tags)
 		}
-		for i, key := range keys {
-			if users[i].ID != key {
-				t.Fatal(users)
+		for i, key := range tags {
+			if users[i].Tag != key {
+				userTags := []string{}
+				for _, v := range users {
+					userTags = append(userTags, v.Tag)
+				}
+				t.Fatalf("Should be %v, got %v, is reverse: %v", tags, userTags, c.reverse)
 			}
 		}
 	}
