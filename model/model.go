@@ -6,9 +6,11 @@
 package model
 
 import (
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/micro/micro/v3/service/store"
 )
@@ -21,9 +23,11 @@ const (
 type db struct {
 	store   store.Store
 	indexes []Index
-	entity  interface{}
-	fields  []string
 	debug   bool
+	// helps logically separate keys in a db where
+	// multiple `DB`s share the same underlying
+	// physical database.
+	Namespace string
 }
 
 func (d *db) Save(instance interface{}) error {
@@ -47,15 +51,8 @@ func (d *db) Save(instance interface{}) error {
 	if d.debug {
 		fmt.Printf("Saving key %v, value: %v\n", id, string(js))
 	}
-	err = d.store.Write(&store.Record{
-		Key:   id,
-		Value: js,
-	})
-	if err != nil {
-		return err
-	}
 	for _, index := range d.indexes {
-		k := indexToSaveKey(index, id, m)
+		k := d.indexToSaveKey(index, id, m)
 		if d.debug {
 			fmt.Printf("Saving key %v, value: %v\n", k, string(js))
 		}
@@ -76,7 +73,7 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 	}
 	for _, index := range d.indexes {
 		if indexMatchesQuery(index, query) {
-			k := queryToListKey(query)
+			k := d.queryToListKey(query)
 			if d.debug {
 				fmt.Printf("Listing key %v\n", k)
 			}
@@ -96,22 +93,64 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 			return json.Unmarshal(jsBuffer, resultSlicePointer)
 		}
 	}
-	return fmt.Errorf("Query type %v, field %v does not match any indexes", query.Type, query.FieldName)
+	return fmt.Errorf("For query type '%v', field '%v' does not match any indexes", query.Type, query.FieldName)
 }
 
 func indexMatchesQuery(i Index, q Query) bool {
-	if i.Type == q.Type && i.Ordering == q.Ordering {
+	if i.Type == q.Type && i.ReverseOrder == q.ReverseOrder {
 		return true
 	}
 	return false
 }
 
-func queryToListKey(q Query) string {
-	return fmt.Sprintf("by%v:%v", q.FieldName, q.Value)
+func (d *db) queryToListKey(q Query) string {
+	if q.Value == nil {
+		return fmt.Sprintf("%v:by%v", d.Namespace, q.FieldName)
+	}
+	return fmt.Sprintf("%v:by%v:%v", d.Namespace, q.FieldName, q.Value)
 }
 
-func indexToSaveKey(i Index, id string, m map[string]interface{}) string {
-	return fmt.Sprintf("by%v:%v:%v", i.FieldName, m[i.FieldName], id)
+func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string {
+	switch i.Type {
+	case indexTypeEq:
+		if i.ReverseOrder {
+			fieldName := i.OrderField
+			if len(fieldName) == 0 {
+				fieldName = "id"
+			}
+			switch v := m[fieldName].(type) {
+			case string:
+				bs := []byte{}
+				for _, char := range v {
+					bs = append(bs, byte(math.MaxInt32-int32(char)))
+				}
+				// padding the string to a fixed length
+				if len(bs) < i.StringOrderPadLength {
+					pad := make([]byte, i.StringOrderPadLength-len(bs))
+					for j := range pad {
+						if i.ReverseOrder {
+							pad[j] = math.MaxInt8
+						} else {
+							pad[j] = 0
+						}
+					}
+					bs = append(bs, pad...)
+				}
+
+				// base32 hex should be order preserving
+				// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
+				dst := make([]byte, base32.HexEncoding.DecodedLen(len(bs)))
+				base32.HexEncoding.Encode(dst, bs)
+				// @todo id will ruin the ordering here ie
+				// as the second part is not fixed length
+				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, string(dst), id)
+			case float64:
+				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, math.MaxFloat64-v, id)
+			}
+		}
+		return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, m[i.FieldName], id)
+	}
+	return ""
 }
 
 // DB represents a place where data can be saved to and
@@ -121,24 +160,35 @@ type DB interface {
 	List(query Query, resultPointer interface{}) error
 }
 
-func NewDB(store store.Store, entity interface{}, indexes []Index) DB {
+func NewDB(store store.Store, namespace string, indexes []Index) DB {
 	return &db{
-		store, indexes, entity, nil, true,
+		store, indexes, true, namespace,
 	}
 }
 
 type Index struct {
 	FieldName string
-	Type      string // eg. equality
-	Ordering  bool   // ASC or DESC ordering
+	// Type of index, eg. equality
+	Type string
+	// Default order is ASC, ReverseOrder means ordering is DESC
+	ReverseOrder bool
+	// eg. order based on "age". Defaults to "id".
+	OrderField string
+	// Strings for ordering will be padded to a fix length
+	// Not a useful property for Querying, please ignore this at query time.
+	// Number is in bytes, not string characters. Choose a sufficiently big one.
+	// Consider that each character might take 4 bytes given the
+	// internals of reverse ordering. So a good rule of thumbs is expected
+	// characters in a string X 4
+	StringOrderPadLength int
 }
 
 func Indexes(indexes ...Index) []Index {
 	return indexes
 }
 
-// ByEq constructs an equiality index on `fieldName`
-func ByEq(fieldName string) Index {
+// ByEquality constructs an equiality index on `fieldName`
+func ByEquality(fieldName string) Index {
 	return Index{
 		FieldName: fieldName,
 		Type:      indexTypeEq,
@@ -146,27 +196,20 @@ func ByEq(fieldName string) Index {
 }
 
 type Query struct {
-	Type      string
-	FieldName string
-	Value     interface{}
-	// false = ascending order, true = descending order
-	Ordering bool
+	Index
+	Value  interface{}
+	Offset int64
+	Limit  int64
 }
 
-func (q Query) Ord(desc bool) Query {
+// Equals is an equality query by `fieldName`
+// It filters records where `fieldName` equals to a value.
+func Equals(fieldName string, value interface{}) Query {
 	return Query{
-		Type:      q.Type,
-		FieldName: q.FieldName,
-		Value:     q.Value,
-		Ordering:  desc,
-	}
-}
-
-// Eq is an equality query by `fieldName`
-func Eq(fieldName string, value interface{}) Query {
-	return Query{
-		Type:      queryTypeEq,
-		FieldName: fieldName,
-		Value:     value,
+		Index: Index{
+			Type:      queryTypeEq,
+			FieldName: fieldName,
+		},
+		Value: value,
 	}
 }
