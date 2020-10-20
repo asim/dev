@@ -75,7 +75,7 @@ ageQuery.Ordered = false
 
 Ordering comes for "free" when dealing with numeric or boolean fields, but it involves  in padding, inversing and order preserving base32 encoding of values to work for strings.
 
-This can sometimes result in large keys saved, as the inverse of a small 1 byte character in a string is a 4 byte rune. Adding base32 encoding on top, strings blow up by size by about a factor of 5-6. If saving space is a requirement and ordering is not, ordering for strings should be turned off.
+This can sometimes result in large keys saved, as the inverse of a small 1 byte character in a string is a 4 byte rune. Optionally adding base32 encoding on top to prevent exotic runes appearing in keys, strings blow up by size by about a factor of 5-6. If saving space is a requirement and ordering is not, ordering for strings should be turned off.
 
 The matter is further complicated by the fact that the padding size must be specified ahead of time:
 
@@ -85,6 +85,12 @@ nameIndex.StringOrderPadLength = 10
 
 nameQuery := Equals("age", 22)
 // `StringOrderPadLength` is not needed to be specified for the query
+```
+
+To turn off base32 encoding and keep the runes:
+
+```go
+nameIndex.Base32Encode = false
 ```
 
 ## Design

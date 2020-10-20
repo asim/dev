@@ -164,11 +164,15 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
 	var keyPart string
 	bs := []byte(string(runes))
 	if i.Desc {
-		// base32 hex should be order preserving
-		// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
-		dst := make([]byte, base32.HexEncoding.EncodedLen(len(bs)))
-		base32.HexEncoding.Encode(dst, bs)
-		keyPart = strings.ReplaceAll(string(dst), "=", "0")
+		if i.Base32Encode {
+			// base32 hex should be order preserving
+			// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering
+			dst := make([]byte, base32.HexEncoding.EncodedLen(len(bs)))
+			base32.HexEncoding.Encode(dst, bs)
+			keyPart = strings.ReplaceAll(string(dst), "=", "0")
+		} else {
+			keyPart = string(bs)
+		}
 	} else {
 		keyPart = string(bs)
 
@@ -208,6 +212,9 @@ type Index struct {
 	// internals of reverse ordering. So a good rule of thumbs is expected
 	// characters in a string X 4
 	StringOrderPadLength int
+	// True = base32 encode ordered strings for easier management
+	// or false = keep 4 bytes long runes that might dispaly weirdly
+	Base32Encode bool
 }
 
 func Indexes(indexes ...Index) []Index {
@@ -217,9 +224,11 @@ func Indexes(indexes ...Index) []Index {
 // ByEquality constructs an equiality index on `fieldName`
 func ByEquality(fieldName string) Index {
 	return Index{
-		FieldName: fieldName,
-		Type:      indexTypeEq,
-		Ordered:   true,
+		FieldName:            fieldName,
+		Type:                 indexTypeEq,
+		Ordered:              true,
+		StringOrderPadLength: 16,
+		Base32Encode:         false,
 	}
 }
 
