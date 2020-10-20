@@ -121,13 +121,15 @@ func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string
 			if i.Ordered {
 				return d.getOrderedStringFieldKey(i, id, v)
 			}
+			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, v, id)
 		case float64:
 			if i.Desc {
 				return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, math.MaxFloat64-v, id)
 			}
 			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, v, id)
+		case bool:
+			return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, v, id)
 		}
-
 		return fmt.Sprintf("%v:by%v:%v:%v", d.Namespace, i.FieldName, m[i.FieldName], id)
 	}
 	return ""
