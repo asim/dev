@@ -93,7 +93,7 @@ func TestOrderingStrings(t *testing.T) {
 	}
 	cazes := []caze{
 		{
-			tags:    []string{"1", "2"},
+			tags:    []string{"2", "1"},
 			reverse: false,
 		},
 		{
@@ -129,6 +129,7 @@ func TestOrderingStrings(t *testing.T) {
 		}
 
 		tags := sort.StringSlice(c.tags)
+		sort.Sort(tags)
 		if c.reverse {
 			reverse(tags)
 		}
