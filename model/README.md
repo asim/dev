@@ -95,3 +95,10 @@ To maintain all indexes properly, all fields must be filled out when saving.
 This sometimes requires a `Read, Modify, Save` pattern. In other words, partial updates will break indexes.
 
 This could be avoided later if model does the loading itself.
+
+## TODO
+
+- Implement deletes
+- Implement counters, for pattern inspiration see the [tags service](https://github.com/micro/services/tree/master/blog/tags)
+- Test boolean indexes and its ordering
+- There is a stuttering in the way `id` fields are being saved twice. ID fields since they are unique do not need `id` appended after them in the record keys.
