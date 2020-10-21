@@ -265,6 +265,13 @@ func TestUniqueIndex(t *testing.T) {
 	}
 	err = db.Save(User{
 		ID:  "2",
+		Tag: "hello-there",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Save(User{
+		ID:  "3",
 		Tag: "hi-there",
 	})
 	if err == nil {

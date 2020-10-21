@@ -182,7 +182,9 @@ func (d *db) Save(instance interface{}) error {
 	for _, index := range d.indexes {
 		if index.Unique {
 			res := []idOnly{}
-			err = d.List(index.ToQuery(), &res)
+			q := index.ToQuery()
+			q.Value = m[index.FieldName]
+			err = d.List(q, &res)
 			if err != nil {
 				return err
 			}
