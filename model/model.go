@@ -143,7 +143,46 @@ func (d *db) Save(instance interface{}) error {
 			return fmt.Errorf("ID of objects must marshal to JSON key 'ID' or 'id'")
 		}
 	}
+
+	// get the old entries so we can compare values
+	// @todo consider some kind of locking (even if it's not distributed) by key here
+	// to avoid 2 read-writes happening at the same time
+	idQuery := Equals("id", id)
+	idQuery.Ordered = false
+
+	oldEntryList := []map[string]interface{}{}
+	err = d.List(idQuery, &oldEntryList)
+	if err != nil {
+		return err
+	}
+	var oldEntry map[string]interface{}
+	if len(oldEntryList) > 0 {
+		oldEntry = oldEntryList[0]
+	}
+
 	for _, index := range d.indexes {
+		// delete non id index keys to prevent stale index values
+		// ie
+		//
+		//  # prefix  slug     id
+		//  postByTag/hi-there/1
+		//  # if slug gets changed to "hello-there" we will have two records
+		//  # without removing the old stale index:
+		//  postByTag/hi-there/1
+		//  postByTag/hello-there/1`
+		//
+		// @todo this check will only work for POD types, ie no slices or maps
+		// but it's not an issue as right now indexes are only supported on POD
+		// types anyway
+		if !indexesMatch(defaultIndex(), index) &&
+			oldEntry != nil &&
+			oldEntry[index.FieldName] != m[index.FieldName] {
+			k := d.indexToSaveKey(index, id, oldEntry)
+			err = d.store.Delete(k)
+			if err != nil {
+				return err
+			}
+		}
 		k := d.indexToSaveKey(index, id, m)
 		if d.debug {
 			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
@@ -313,5 +352,6 @@ func (d *db) Delete(query Query) error {
 	key := d.indexToSaveKey(defInd, results[0].ID, map[string]interface{}{
 		"id": results[0].ID,
 	})
+	fmt.Printf("Deleting key '%v'\n", key)
 	return d.store.Delete(key)
 }

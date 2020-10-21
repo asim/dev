@@ -224,3 +224,30 @@ func TestOrderingNumbers(t *testing.T) {
 	}
 
 }
+
+func TestStaleIndexRemoval(t *testing.T) {
+	tagIndex := ByEquality("tag")
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex))
+	err := db.Save(User{
+		ID:  "1",
+		Tag: "hi-there",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Save(User{
+		ID:  "1",
+		Tag: "hello-there",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := []User{}
+	err = db.List(Equals("tag", nil), &res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) > 1 {
+		t.Fatal(res)
+	}
+}
