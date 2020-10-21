@@ -22,6 +22,12 @@ const (
 	indexTypeEq = "eq"
 )
 
+func defaultIndex() Index {
+	idIndex := ByEquality("id")
+	idIndex.Ordered = false
+	return idIndex
+}
+
 type db struct {
 	store   store.Store
 	indexes []Index
@@ -35,26 +41,29 @@ type db struct {
 // DB represents a place where data can be saved to and
 // queried from.
 type DB interface {
+	// Save any object. Maintains indexes set up.
 	Save(interface{}) error
+	// Deletes a record. Delete only support Equals("id", value) for now.
+	// @todo Delete only supports string keys for now.
+	Delete(query Query) error
+	// List objects by a query. Each query requires an appropriate index
+	// to exist. List throws an error if a matching index can't be found.
 	List(query Query, resultPointer interface{}) error
 }
 
 func NewDB(store store.Store, namespace string, indexes []Index) DB {
-	idIndex := ByEquality("id")
-	idIndex.Ordered = false
-
 	// filtering out the default id index in case the user passes it in
 	// maybe this should do deduping instead
 	filtered := []Index{}
 	for _, index := range indexes {
-		if !indexesMatch(index, idIndex) {
+		if !indexesMatch(index, defaultIndex()) {
 			filtered = append(filtered, index)
 		}
 	}
 
 	debug := false
 	return &db{
-		store, append([]Index{idIndex}, filtered...), debug, namespace,
+		store, append([]Index{defaultIndex()}, filtered...), debug, namespace,
 	}
 }
 
@@ -282,4 +291,27 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
 
 	}
 	return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), keyPart, id)
+}
+
+func (d *db) Delete(query Query) error {
+	defInd := defaultIndex()
+	if !indexMatchesQuery(defInd, query) {
+		return errors.New("Delete query does not match default index")
+	}
+	// @todo this basically limits ids to strings
+	type ID struct {
+		ID string `json:"id"`
+	}
+	results := []ID{}
+	err := d.List(query, &results)
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		return errors.New("No entry found to delete")
+	}
+	key := d.indexToSaveKey(defInd, results[0].ID, map[string]interface{}{
+		"id": results[0].ID,
+	})
+	return d.store.Delete(key)
 }
