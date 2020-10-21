@@ -251,3 +251,23 @@ func TestStaleIndexRemoval(t *testing.T) {
 		t.Fatal(res)
 	}
 }
+
+func TestUniqueIndex(t *testing.T) {
+	tagIndex := ByEquality("tag")
+	tagIndex.Unique = true
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex))
+	err := db.Save(User{
+		ID:  "1",
+		Tag: "hi-there",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Save(User{
+		ID:  "2",
+		Tag: "hi-there",
+	})
+	if err == nil {
+		t.Fatal("Save shoud fail with duplicate tag error because the index is unique")
+	}
+}

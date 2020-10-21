@@ -74,6 +74,9 @@ type Index struct {
 	// Type of index, eg. equality
 	Type string
 
+	// Do not allow duplicate values of this field in the index.
+	// Useful for emails, usernames, post slugs etc.
+	Unique bool
 	// Ordered or unordered keys. Ordered keys are padded.
 	// Default is true. This option only exists for strings, where ordering
 	// comes at the cost of having rather long padded keys.
@@ -90,6 +93,12 @@ type Index struct {
 	// True = base32 encode ordered strings for easier management
 	// or false = keep 4 bytes long runes that might dispaly weirdly
 	Base32Encode bool
+}
+
+func (i Index) ToQuery() Query {
+	return Query{
+		Index: i,
+	}
 }
 
 func Indexes(indexes ...Index) []Index {
@@ -125,6 +134,11 @@ func Equals(fieldName string, value interface{}) Query {
 		},
 		Value: value,
 	}
+}
+
+// @todo this basically limits ids to strings
+type idOnly struct {
+	ID string `json:"id"`
 }
 
 func (d *db) Save(instance interface{}) error {
@@ -164,9 +178,29 @@ func (d *db) Save(instance interface{}) error {
 		oldEntry = oldEntryList[0]
 	}
 
+	// Do uniqueness checks before saving any data
+	for _, index := range d.indexes {
+		if index.Unique {
+			res := []idOnly{}
+			err = d.List(index.ToQuery(), &res)
+			if err != nil {
+				return err
+			}
+			if len(res) == 0 {
+				continue
+			}
+			if len(res) > 1 {
+				return errors.New("Multiple entries found for unique index")
+			}
+			if res[0].ID != id {
+				return errors.New("Unique index violated")
+			}
+		}
+	}
+
 	for _, index := range d.indexes {
 		// delete non id index keys to prevent stale index values
-		// ie
+		// ie.
 		//
 		//  # prefix  slug     id
 		//  postByTag/hi-there/1
@@ -404,11 +438,7 @@ func (d *db) Delete(query Query) error {
 	if !indexMatchesQuery(defInd, query) {
 		return errors.New("Delete query does not match default index")
 	}
-	// @todo this basically limits ids to strings
-	type ID struct {
-		ID string `json:"id"`
-	}
-	results := []ID{}
+	results := []idOnly{}
 	err := d.List(query, &results)
 	if err != nil {
 		return err
