@@ -298,6 +298,9 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 		case json.Number:
 			i64, err := v.Int64()
 			if err == nil {
+				// int64 gets padded to 19 characters as the maximum value of an int64
+				// is 9223372036854775807
+				// @todo handle negative numbers
 				if i.Desc {
 					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
 				}
@@ -305,6 +308,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			}
 			f64, err := v.Float64()
 			if err == nil {
+				// @todo fix display and padding of floats
 				if i.Desc {
 					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
 				}
@@ -312,6 +316,10 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			}
 			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String())
 		case int:
+			// int gets padded to the same length as int64 to gain
+			// resiliency in case of model type changes.
+			// This could be removed once migrations are implemented
+			// so savings in space for a type reflect in savings in space in the index too.
 			if i.Desc {
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
 			}
