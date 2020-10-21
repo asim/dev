@@ -145,6 +145,9 @@ func TestOrderingStrings(t *testing.T) {
 		if c.reverse {
 			reverse(tags)
 		}
+		if len(tags) != len(users) {
+			t.Fatal(tags, users)
+		}
 		for i, key := range tags {
 			if users[i].Tag != key {
 				userTags := []string{}
