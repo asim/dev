@@ -6,11 +6,13 @@
 package model
 
 import (
+	"bytes"
 	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 	"unicode/utf8"
 
@@ -132,7 +134,9 @@ func (d *db) Save(instance interface{}) error {
 		return err
 	}
 	m := map[string]interface{}{}
-	err = json.Unmarshal(js, &m)
+	de := json.NewDecoder(bytes.NewReader(js))
+	de.UseNumber()
+	err = de.Decode(&m)
 	if err != nil {
 		return err
 	}
@@ -177,13 +181,13 @@ func (d *db) Save(instance interface{}) error {
 		if !indexesMatch(defaultIndex(), index) &&
 			oldEntry != nil &&
 			oldEntry[index.FieldName] != m[index.FieldName] {
-			k := d.indexToSaveKey(index, id, oldEntry)
+			k := d.indexToKey(index, id, oldEntry[index.FieldName], true)
 			err = d.store.Delete(k)
 			if err != nil {
 				return err
 			}
 		}
-		k := d.indexToSaveKey(index, id, m)
+		k := d.indexToKey(index, id, m[index.FieldName], true)
 		if d.debug {
 			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
 		}
@@ -245,31 +249,77 @@ func (d *db) queryToListKey(i Index, q Query) string {
 	if q.Value == nil {
 		return fmt.Sprintf("%v:%v", d.Namespace, indexPrefix(i))
 	}
-	return fmt.Sprintf("%v:%v:%v", d.Namespace, indexPrefix(i), q.Value)
+
+	return d.indexToKey(i, "", q.Value, false)
 }
 
-func (d *db) indexToSaveKey(i Index, id string, m map[string]interface{}) string {
+func formatWrapper(appendID bool) func(format string) string {
+	return func(format string) string {
+		if appendID {
+			return format + ":%v"
+		}
+		return format
+	}
+}
+
+func valueWrapper(appendID bool, id string) func(values ...interface{}) []interface{} {
+	return func(values ...interface{}) []interface{} {
+		if appendID {
+			return append(values, id)
+		}
+		return values
+	}
+}
+
+// appendID true should be used when saving, false when querying
+// appendID false should also be used for 'id' indexes since they already have the unique
+// id. The reason id gets appended is make duplicated index keys unique.
+// ie.
+// # index # age # id
+// users/30/1
+// users/30/2
+// without ids we could only have one 30 year old user in the index
+func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID bool) string {
+	fw := formatWrapper(appendID)
+	vw := valueWrapper(appendID, id)
+
 	switch i.Type {
 	case indexTypeEq:
 		fieldName := i.FieldName
 		if len(fieldName) == 0 {
 			fieldName = "id"
 		}
-		switch v := m[fieldName].(type) {
+		switch v := fieldValue.(type) {
 		case string:
 			if i.Ordered {
-				return d.getOrderedStringFieldKey(i, id, v)
+				return d.getOrderedStringFieldKey(i, id, v, appendID)
 			}
-			return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), v, id)
-		case float64:
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+		case json.Number:
+			i64, err := v.Int64()
+			if err == nil {
+				if i.Desc {
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
+				}
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
+			}
+			f64, err := v.Float64()
+			if err == nil {
+				if i.Desc {
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
+				}
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+			}
+			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String())
+		case int:
 			if i.Desc {
-				return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), math.MaxFloat64-v, id)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
 			}
-			return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), v, id)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case bool:
-			return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), v, id)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 		}
-		return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), m[i.FieldName], id)
+		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String())
 	}
 	return ""
 }
@@ -286,7 +336,10 @@ func indexPrefix(i Index) string {
 }
 
 // since field keys
-func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
+func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID bool) string {
+	fw := formatWrapper(appendID)
+	vw := valueWrapper(appendID, id)
+
 	runes := []rune{}
 	if i.Desc {
 		for _, char := range fieldValue {
@@ -305,7 +358,13 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
 			if i.Desc {
 				pad = append(pad, utf8.MaxRune)
 			} else {
-				pad = append(pad, 'a')
+				// space is the first non control operator char in ASCII
+				// consequently in Utf8 too so we use it as the minimal character here
+				// https://en.wikipedia.org/wiki/ASCII
+				//
+				// Displays somewhat unfortunately
+				// @todo think about a better min rune value to use here.
+				pad = append(pad, rune(32))
 			}
 		}
 		runes = append(runes, pad...)
@@ -329,7 +388,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string) string {
 		keyPart = string(bs)
 
 	}
-	return fmt.Sprintf("%v:%v:%v:%v", d.Namespace, indexPrefix(i), keyPart, id)
+	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), keyPart)...)
 }
 
 func (d *db) Delete(query Query) error {
@@ -349,9 +408,9 @@ func (d *db) Delete(query Query) error {
 	if len(results) == 0 {
 		return errors.New("No entry found to delete")
 	}
-	key := d.indexToSaveKey(defInd, results[0].ID, map[string]interface{}{
+	key := d.indexToKey(defInd, results[0].ID, map[string]interface{}{
 		"id": results[0].ID,
-	})
+	}, true)
 	fmt.Printf("Deleting key '%v'\n", key)
 	return d.store.Delete(key)
 }
