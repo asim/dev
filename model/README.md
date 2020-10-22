@@ -26,13 +26,12 @@ type User struct {
 
 ## Query by field equality
 
-For each field we want to query on we have to create an index. Index by `id` is optional.
+For each field we want to query on we have to create an index. Index by `id` is provided by default to each `DB`, there is no need to specify it.
 
 ```go
-idIndex := ByEquality("id")
-ageIndex := ByEquality("age")
+ageIndex := model.ByEquality("age")
 
-db := model.NewDB(fs.NewStore(), "users", []model.Index{(idIndex, ageIndex})
+db := model.NewDB(fs.NewStore(), "users", []model.Index{(ageIndex})
 
 err := db.Save(User{
     ID: "1",
@@ -51,7 +50,7 @@ if err != nil {
     // handle save error
 }
 
-err = db.List(Equals("age", 22), &users)
+err = db.List(model.Equals("age", 22), &users)
 if err != nil {
 	// handle list error
 }
@@ -61,14 +60,86 @@ fmt.Println(users)
 // [{"id":"2","name":"Jane","age":22}]
 ```
 
+## Listing all records in an index
+
+Listing can be done without specifying a value:
+
+```go
+db.List(Equals("age", nil), &users)
+```
+
+Listings will be unordered, ascending ordered or descending ordered depending on the ordering settings of the index.
+
 ## Ordering
 
 Indexes by default are ordered. If we want to turn this behaviour off:
 
 ```go
 ageIndex.Ordered = false
-ageQuery := Equals("age", 22)
+
+ageQuery := model.Equals("age", 22)
 ageQuery.Ordered = false
+```
+
+### Reverse order
+
+```go
+ageQuery.Desc = true
+```
+
+### Queries must match indexes
+
+It is important to note that queries must match indexes. The following index-query pairs match (separated by an empty line)
+
+```go
+// Ascending ordered index by age
+index := model.Equality("age")
+// List ascending ordered by age
+query := model.Equals("age", nil)
+// List ascending ordered by age where age = 20
+query2 := model.Equals("age", 20) 
+
+// Descending ordered index by age
+index := model.Equality("age")
+index.Desc = true
+// List descending ordered by age
+query := model.Equals("age", nil)
+query.Desc = true
+// List descending ordered by age where age = 20
+query2 := model.Equals("age", 20)
+query2.Desc = true
+
+// Unordered index by age
+index := model.Equality("age")
+index.Ordered = false
+// List unordered by age
+query := model.Equals("age", nil)
+query.Ordered = false
+// List unordered by age where age = 20
+query2 := model.Equals("age", 20)
+query2.Ordered = false
+```
+
+### Unordered listing without value
+
+It's easy to see how listing things by unordered indexes on different fields should result in the same output: a randomly ordered list, ie:
+
+```go
+ageIndex := model.Equality("age")
+ageIndex.Ordered = false
+
+emailIndex := model.Equality("email")
+emailIndex.Ordered = false
+
+result1 := []User{}
+result2 := []User{}
+
+db.List(model.Equals("age"), &result1)
+db.List(model.Equals("email"), &result2)
+
+// Both result1 and result2 will be an unordered listing without
+// filtering on either the age or email fields.
+// Could be thought of as a noop query despite not having an explicit "no query" listing.
 ```
 
 ### Ordering by string fields
@@ -77,7 +148,7 @@ Ordering comes for "free" when dealing with numeric or boolean fields, but it in
 
 This can sometimes result in large keys saved, as the inverse of a small 1 byte character in a string is a 4 byte rune. Optionally adding base32 encoding on top to prevent exotic runes appearing in keys, strings blow up in size even more. If saving space is a requirement and ordering is not, ordering for strings should be turned off.
 
-The matter is further complicated by the fact that the padding size must be specified ahead of time:
+The matter is further complicated by the fact that the padding size must be specified ahead of time.
 
 ```go
 nameIndex := ByEquality("name")
@@ -91,6 +162,13 @@ To turn off base32 encoding and keep the runes:
 
 ```go
 nameIndex.Base32Encode = false
+```
+
+## Unique indexes
+
+```go
+emailIndex := ByEquality("email")
+emailIndex.Unique = true
 ```
 
 ## Design
