@@ -180,23 +180,24 @@ func (d *db) Save(instance interface{}) error {
 
 	// Do uniqueness checks before saving any data
 	for _, index := range d.indexes {
-		if index.Unique {
-			res := []idOnly{}
-			q := index.ToQuery()
-			q.Value = m[index.FieldName]
-			err = d.List(q, &res)
-			if err != nil {
-				return err
-			}
-			if len(res) == 0 {
-				continue
-			}
-			if len(res) > 1 {
-				return errors.New("Multiple entries found for unique index")
-			}
-			if res[0].ID != id {
-				return errors.New("Unique index violated")
-			}
+		if !index.Unique {
+			continue
+		}
+		res := []idOnly{}
+		q := index.ToQuery()
+		q.Value = m[index.FieldName]
+		err = d.List(q, &res)
+		if err != nil {
+			return err
+		}
+		if len(res) == 0 {
+			continue
+		}
+		if len(res) > 1 {
+			return errors.New("Multiple entries found for unique index")
+		}
+		if res[0].ID != id {
+			return errors.New("Unique index violated")
 		}
 	}
 
@@ -358,7 +359,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 				}
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 			}
-			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String())
+			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
@@ -371,7 +372,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 		case bool:
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 		}
-		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String())
+		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 	}
 	return ""
 }
