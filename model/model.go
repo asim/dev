@@ -39,9 +39,13 @@ func defaultIndex() Index {
 }
 
 type db struct {
-	store   store.Store
-	indexes []Index
-	options DBOptions
+	store store.Store
+	// helps logically separate keys in a db where
+	// multiple `DB`s share the same underlying
+	// physical database.
+	namespace string
+	indexes   []Index
+	options   DBOptions
 }
 
 // DB represents a place where data can be saved to and
@@ -58,31 +62,24 @@ type DB interface {
 }
 
 type DBOptions struct {
-	Debug bool
-	// helps logically separate keys in a db where
-	// multiple `DB`s share the same underlying
-	// physical database.
-	Namespace string
-	IdIndex   Index
+	Debug   bool
+	IdIndex Index
 }
 
-func NewDB(store store.Store, indexes []Index, options *DBOptions) DB {
+func NewDB(store store.Store, namespace string, indexes []Index, options *DBOptions) DB {
 	debug := false
-	namespace := ""
 	var idIndex Index
 	if options != nil {
 		debug = options.Debug
-		namespace = options.Namespace
 		idIndex = options.IdIndex
 	}
 	if idIndex.Type == "" {
 		idIndex = defaultIndex()
 	}
 	return &db{
-		store, indexes, DBOptions{
-			Debug:     debug,
-			Namespace: namespace,
-			IdIndex:   idIndex,
+		store, namespace, indexes, DBOptions{
+			Debug:   debug,
+			IdIndex: idIndex,
 		}}
 }
 
@@ -304,7 +301,7 @@ func indexesMatch(i, j Index) bool {
 
 func (d *db) queryToListKey(i Index, q Query) string {
 	if q.Value == nil {
-		return fmt.Sprintf("%v:%v", d.options.Namespace, indexPrefix(i))
+		return fmt.Sprintf("%v:%v", d.namespace, indexPrefix(i))
 	}
 
 	return d.indexToKey(i, "", q.Value, false)
@@ -353,7 +350,7 @@ func (d *db) indexToKey(i Index, id interface{}, fieldValue interface{}, appendI
 			if i.Order.Type != OrderTypeUnordered {
 				return d.getOrderedStringFieldKey(i, id, v, appendID)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 		case json.Number:
 			// @todo some duplication going on here, see int64 and float64 cases,
 			// move it out to a function
@@ -363,17 +360,17 @@ func (d *db) indexToKey(i Index, id interface{}, fieldValue interface{}, appendI
 				// is 9223372036854775807
 				// @todo handle negative numbers
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
 			}
 			f64, err := v.Float64()
 			if err == nil {
 				// @todo fix display and padding of floats
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), math.MaxFloat64-f64)...)
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 			}
 			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 		case int64:
@@ -381,26 +378,26 @@ func (d *db) indexToKey(i Index, id interface{}, fieldValue interface{}, appendI
 			// is 9223372036854775807
 			// @todo handle negative numbers
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case float64:
 			// @todo fix display and padding of floats
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), math.MaxFloat64-v)...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), math.MaxFloat64-v)...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
 			// This could be removed once migrations are implemented
 			// so savings in space for a type reflect in savings in space in the index too.
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case bool:
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 		}
 		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 	}
@@ -472,7 +469,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string
 		keyPart = string(bs)
 
 	}
-	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), keyPart)...)
+	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), keyPart)...)
 }
 
 func (d *db) Delete(query Query) error {

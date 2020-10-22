@@ -18,9 +18,7 @@ type User struct {
 }
 
 func TestEqualsByID(t *testing.T) {
-	db := NewDB(fs.NewStore(), nil, &DBOptions{
-		Namespace: uuid.Must(uuid.NewV4()).String(),
-	})
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, nil)
 
 	err := db.Save(User{
 		ID:  "1",
@@ -49,9 +47,7 @@ func TestEqualsByID(t *testing.T) {
 }
 
 func TestEquals(t *testing.T) {
-	db := NewDB(fs.NewStore(), Indexes(ByEquality("age")), &DBOptions{
-		Namespace: uuid.Must(uuid.NewV4()).String(),
-	})
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
 
 	err := db.Save(User{
 		ID:  "1",
@@ -129,9 +125,7 @@ func TestOrderingStrings(t *testing.T) {
 			tagIndex.Order.Type = OrderTypeDesc
 		}
 		tagIndex.StringOrderPadLength = 12
-		db := NewDB(fs.NewStore(), Indexes(tagIndex), &DBOptions{
-			Namespace: uuid.Must(uuid.NewV4()).String(),
-		})
+		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
 		for _, key := range c.tags {
 			err := db.Save(User{
 				ID:  uuid.Must(uuid.NewV4()).String(),
@@ -199,9 +193,7 @@ func TestOrderingNumbers(t *testing.T) {
 		if c.reverse {
 			createdIndex.Order.Type = OrderTypeDesc
 		}
-		db := NewDB(fs.NewStore(), Indexes(createdIndex), &DBOptions{
-			Namespace: uuid.Must(uuid.NewV4()).String(),
-		})
+		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(createdIndex), nil)
 		for _, key := range c.dates {
 			err := db.Save(User{
 				ID:      uuid.Must(uuid.NewV4()).String(),
@@ -244,9 +236,7 @@ func TestOrderingNumbers(t *testing.T) {
 
 func TestStaleIndexRemoval(t *testing.T) {
 	tagIndex := ByEquality("tag")
-	db := NewDB(fs.NewStore(), Indexes(tagIndex), &DBOptions{
-		Namespace: uuid.Must(uuid.NewV4()).String(),
-	})
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
 	err := db.Save(User{
 		ID:  "1",
 		Tag: "hi-there",
@@ -274,9 +264,7 @@ func TestStaleIndexRemoval(t *testing.T) {
 func TestUniqueIndex(t *testing.T) {
 	tagIndex := ByEquality("tag")
 	tagIndex.Unique = true
-	db := NewDB(fs.NewStore(), Indexes(tagIndex), &DBOptions{
-		Namespace: uuid.Must(uuid.NewV4()).String(),
-	})
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
 	err := db.Save(User{
 		ID:  "1",
 		Tag: "hi-there",
@@ -308,9 +296,8 @@ type Tag struct {
 func TestNonIDKeys(t *testing.T) {
 	slugIndex := ByEquality("slug")
 	slugIndex.Order.Type = OrderTypeUnordered
-	db := NewDB(fs.NewStore(), nil, &DBOptions{
-		Namespace: uuid.Must(uuid.NewV4()).String(),
-		IdIndex:   slugIndex,
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, &DBOptions{
+		IdIndex: slugIndex,
 	})
 
 	err := db.Save(Tag{
