@@ -341,6 +341,8 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 		case json.Number:
+			// @todo some duplication going on here, see int64 and float64 cases,
+			// move it out to a function
 			i64, err := v.Int64()
 			if err == nil {
 				// int64 gets padded to 19 characters as the maximum value of an int64
@@ -368,6 +370,12 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+		case float64:
+			// @todo fix display and padding of floats
+			if i.Desc {
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-v)...)
+			}
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
