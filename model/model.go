@@ -260,7 +260,7 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 		if indexMatchesQuery(index, query) {
 			k := d.queryToListKey(index, query)
 			if d.options.Debug {
-				fmt.Printf("Listing key %v\n", k)
+				fmt.Printf("Listing key '%v'\n", k)
 			}
 			recs, err := d.store.Read(k, store.ReadPrefix())
 			if err != nil {
