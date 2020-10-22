@@ -305,7 +305,7 @@ type Tag struct {
 	Age  int    `json:"age"`
 }
 
-func TestNonIDFieldAsID(t *testing.T) {
+func TestNonIDKeys(t *testing.T) {
 	slugIndex := ByEquality("slug")
 	slugIndex.Order.Type = OrderTypeUnordered
 	db := NewDB(fs.NewStore(), nil, &DBOptions{
