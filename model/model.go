@@ -268,7 +268,10 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 }
 
 func indexMatchesQuery(i Index, q Query) bool {
-	if i.Type == q.Type && i.Ordered == q.Ordered && i.Desc == q.Desc {
+	if i.FieldName == q.FieldName &&
+		q.Type == q.Type &&
+		i.Ordered == q.Ordered &&
+		i.Desc == q.Desc {
 		return true
 	}
 	return false
