@@ -278,7 +278,10 @@ func indexMatchesQuery(i Index, q Query) bool {
 }
 
 func indexesMatch(i, j Index) bool {
-	if i.Type == j.Type && i.Ordered == j.Ordered && i.Desc == j.Desc {
+	if i.FieldName == j.FieldName &&
+		i.Type == j.Type &&
+		i.Ordered == j.Ordered &&
+		i.Desc == j.Desc {
 		return true
 	}
 	return false
@@ -373,6 +376,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 	return ""
 }
 
+// indexPrefix returns the first part of the keys, the namespace + index name
 func indexPrefix(i Index) string {
 	if i.Ordered {
 		desc := ""
@@ -384,7 +388,7 @@ func indexPrefix(i Index) string {
 	return fmt.Sprintf("by%v", strings.Title(i.FieldName))
 }
 
-// since field keys
+// pad, reverse and optionally base32 encode string keys
 func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID bool) string {
 	fw := formatWrapper(appendID)
 	vw := valueWrapper(appendID, id)
