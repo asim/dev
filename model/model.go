@@ -19,6 +19,14 @@ import (
 	"github.com/micro/micro/v3/service/store"
 )
 
+type OrderType string
+
+const (
+	OrderTypeUnordered = OrderType("unordered")
+	OrderTypeAsc       = OrderType("ascending")
+	OrderTypeDesc      = OrderType("descending")
+)
+
 const (
 	queryTypeEq = "eq"
 	indexTypeEq = "eq"
@@ -26,7 +34,7 @@ const (
 
 func defaultIndex() Index {
 	idIndex := ByEquality("id")
-	idIndex.Ordered = false
+	idIndex.Order.Type = OrderTypeUnordered
 	return idIndex
 }
 
@@ -72,17 +80,11 @@ func NewDB(store store.Store, namespace string, indexes []Index) DB {
 type Index struct {
 	FieldName string
 	// Type of index, eg. equality
-	Type string
-
+	Type  string
+	Order Order
 	// Do not allow duplicate values of this field in the index.
 	// Useful for emails, usernames, post slugs etc.
 	Unique bool
-	// Ordered or unordered keys. Ordered keys are padded.
-	// Default is true. This option only exists for strings, where ordering
-	// comes at the cost of having rather long padded keys.
-	Ordered bool
-	// Default order is ascending, if Desc is true it is descending
-	Desc bool
 	// Strings for ordering will be padded to a fix length
 	// Not a useful property for Querying, please ignore this at query time.
 	// Number is in bytes, not string characters. Choose a sufficiently big one.
@@ -95,9 +97,19 @@ type Index struct {
 	Base32Encode bool
 }
 
-func (i Index) ToQuery() Query {
+type Order struct {
+	FieldName string
+	// Ordered or unordered keys. Ordered keys are padded.
+	// Default is true. This option only exists for strings, where ordering
+	// comes at the cost of having rather long padded keys.
+	Type OrderType
+}
+
+func (i Index) ToQuery(value interface{}) Query {
 	return Query{
 		Index: i,
+		Value: value,
+		Order: i.Order,
 	}
 }
 
@@ -108,9 +120,12 @@ func Indexes(indexes ...Index) []Index {
 // ByEquality constructs an equiality index on `fieldName`
 func ByEquality(fieldName string) Index {
 	return Index{
-		FieldName:            fieldName,
-		Type:                 indexTypeEq,
-		Ordered:              true,
+		FieldName: fieldName,
+		Type:      indexTypeEq,
+		Order: Order{
+			Type:      OrderTypeAsc,
+			FieldName: fieldName,
+		},
 		StringOrderPadLength: 16,
 		Base32Encode:         false,
 	}
@@ -118,6 +133,7 @@ func ByEquality(fieldName string) Index {
 
 type Query struct {
 	Index
+	Order  Order
 	Value  interface{}
 	Offset int64
 	Limit  int64
@@ -130,9 +146,16 @@ func Equals(fieldName string, value interface{}) Query {
 		Index: Index{
 			Type:      queryTypeEq,
 			FieldName: fieldName,
-			Ordered:   true,
+			Order: Order{
+				FieldName: fieldName,
+				Type:      OrderTypeAsc,
+			},
 		},
 		Value: value,
+		Order: Order{
+			FieldName: fieldName,
+			Type:      OrderTypeAsc,
+		},
 	}
 }
 
@@ -166,7 +189,7 @@ func (d *db) Save(instance interface{}) error {
 	// @todo consider some kind of locking (even if it's not distributed) by key here
 	// to avoid 2 read-writes happening at the same time
 	idQuery := Equals("id", id)
-	idQuery.Ordered = false
+	idQuery.Order.Type = OrderTypeUnordered
 
 	oldEntryList := []map[string]interface{}{}
 	err = d.List(idQuery, &oldEntryList)
@@ -184,8 +207,7 @@ func (d *db) Save(instance interface{}) error {
 			continue
 		}
 		res := []idOnly{}
-		q := index.ToQuery()
-		q.Value = m[index.FieldName]
+		q := index.ToQuery(m[index.FieldName])
 		err = d.List(q, &res)
 		if err != nil {
 			return err
@@ -270,9 +292,8 @@ func (d *db) List(query Query, resultSlicePointer interface{}) error {
 
 func indexMatchesQuery(i Index, q Query) bool {
 	if i.FieldName == q.FieldName &&
-		q.Type == q.Type &&
-		i.Ordered == q.Ordered &&
-		i.Desc == q.Desc {
+		i.Type == q.Type &&
+		i.Order.Type == q.Order.Type {
 		return true
 	}
 	return false
@@ -281,8 +302,7 @@ func indexMatchesQuery(i Index, q Query) bool {
 func indexesMatch(i, j Index) bool {
 	if i.FieldName == j.FieldName &&
 		i.Type == j.Type &&
-		i.Ordered == j.Ordered &&
-		i.Desc == j.Desc {
+		i.Order.Type == j.Order.Type {
 		return true
 	}
 	return false
@@ -336,7 +356,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 		}
 		switch v := fieldValue.(type) {
 		case string:
-			if i.Ordered {
+			if i.Order.Type != OrderTypeUnordered {
 				return d.getOrderedStringFieldKey(i, id, v, appendID)
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
@@ -348,7 +368,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 				// int64 gets padded to 19 characters as the maximum value of an int64
 				// is 9223372036854775807
 				// @todo handle negative numbers
-				if i.Desc {
+				if i.Order.Type == OrderTypeDesc {
 					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
 				}
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
@@ -356,7 +376,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			f64, err := v.Float64()
 			if err == nil {
 				// @todo fix display and padding of floats
-				if i.Desc {
+				if i.Order.Type == OrderTypeDesc {
 					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
 				}
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
@@ -366,13 +386,13 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			// int64 gets padded to 19 characters as the maximum value of an int64
 			// is 9223372036854775807
 			// @todo handle negative numbers
-			if i.Desc {
+			if i.Order.Type == OrderTypeDesc {
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case float64:
 			// @todo fix display and padding of floats
-			if i.Desc {
+			if i.Order.Type == OrderTypeDesc {
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-v)...)
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
@@ -381,7 +401,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			// resiliency in case of model type changes.
 			// This could be removed once migrations are implemented
 			// so savings in space for a type reflect in savings in space in the index too.
-			if i.Desc {
+			if i.Order.Type == OrderTypeDesc {
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
 			}
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
@@ -395,10 +415,10 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 
 // indexPrefix returns the first part of the keys, the namespace + index name
 func indexPrefix(i Index) string {
-	if i.Ordered {
+	if i.Order.Type != OrderTypeUnordered {
 		desc := ""
-		if i.Desc {
-			desc = "desc"
+		if i.Order.Type == OrderTypeDesc {
+			desc = "Desc"
 		}
 		return fmt.Sprintf("by%vOrdered%v", desc, strings.Title(i.FieldName))
 	}
@@ -411,7 +431,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID b
 	vw := valueWrapper(appendID, id)
 
 	runes := []rune{}
-	if i.Desc {
+	if i.Order.Type == OrderTypeDesc {
 		for _, char := range fieldValue {
 			runes = append(runes, utf8.MaxRune-char)
 		}
@@ -425,7 +445,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID b
 	if len(runes) < i.StringOrderPadLength {
 		pad := []rune{}
 		for j := 0; j < i.StringOrderPadLength-len(runes); j++ {
-			if i.Desc {
+			if i.Order.Type == OrderTypeDesc {
 				pad = append(pad, utf8.MaxRune)
 			} else {
 				// space is the first non control operator char in ASCII
@@ -442,7 +462,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID b
 
 	var keyPart string
 	bs := []byte(string(runes))
-	if i.Desc {
+	if i.Order.Type == OrderTypeDesc {
 		if i.Base32Encode {
 			// base32 hex should be order preserving
 			// https://stackoverflow.com/questions/53301280/does-base64-encoding-preserve-alphabetical-ordering

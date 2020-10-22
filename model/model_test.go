@@ -120,7 +120,9 @@ func TestOrderingStrings(t *testing.T) {
 	}
 	for _, c := range cazes {
 		idIndex := ByEquality("tag")
-		idIndex.Desc = c.reverse
+		if c.reverse {
+			idIndex.Order.Type = OrderTypeDesc
+		}
 		idIndex.StringOrderPadLength = 12
 		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
 		for _, key := range c.tags {
@@ -134,7 +136,9 @@ func TestOrderingStrings(t *testing.T) {
 		}
 		users := []User{}
 		q := Equals("tag", nil)
-		q.Desc = c.reverse
+		if c.reverse {
+			q.Order.Type = OrderTypeDesc
+		}
 		err := db.List(q, &users)
 		if err != nil {
 			t.Fatal(err)
@@ -185,7 +189,9 @@ func TestOrderingNumbers(t *testing.T) {
 	}
 	for _, c := range cazes {
 		idIndex := ByEquality("created")
-		idIndex.Desc = c.reverse
+		if c.reverse {
+			idIndex.Order.Type = OrderTypeDesc
+		}
 		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(idIndex))
 		for _, key := range c.dates {
 			err := db.Save(User{
@@ -198,7 +204,9 @@ func TestOrderingNumbers(t *testing.T) {
 		}
 		users := []User{}
 		q := Equals("created", nil)
-		q.Desc = c.reverse
+		if c.reverse {
+			q.Order.Type = OrderTypeDesc
+		}
 		err := db.List(q, &users)
 		if err != nil {
 			t.Fatal(err)

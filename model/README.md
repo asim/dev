@@ -75,10 +75,10 @@ Listings will be unordered, ascending ordered or descending ordered depending on
 Indexes by default are ordered. If we want to turn this behaviour off:
 
 ```go
-ageIndex.Ordered = false
+ageIndex.Order.Type = OrderTypeUnordered
 
 ageQuery := model.Equals("age", 22)
-ageQuery.Ordered = false
+ageQuery.Order.Type = OrderTypeUnordered
 ```
 
 ### Reverse order
@@ -101,23 +101,23 @@ query2 := model.Equals("age", 20)
 
 // Descending ordered index by age
 index := model.Equality("age")
-index.Desc = true
+index.Order.Type = OrderTypeDesc
 // List descending ordered by age
 query := model.Equals("age", nil)
-query.Desc = true
+query.Order.Type = OrderTypeDesc
 // List descending ordered by age where age = 20
 query2 := model.Equals("age", 20)
-query2.Desc = true
+query2.Order.Type = OrderTypeDesc
 
 // Unordered index by age
 index := model.Equality("age")
-index.Ordered = false
+index.Order.Type = OrderTypeUnordered
 // List unordered by age
 query := model.Equals("age", nil)
-query.Ordered = false
+query.Order.Type = OrderTypeUnordered
 // List unordered by age where age = 20
 query2 := model.Equals("age", 20)
-query2.Ordered = false
+query2.Order.Type = OrderTypeUnordered
 ```
 
 ### Unordered listing without value
@@ -126,10 +126,10 @@ It's easy to see how listing things by unordered indexes on different fields sho
 
 ```go
 ageIndex := model.Equality("age")
-ageIndex.Ordered = false
+ageIndex.Order.Type = OrderTypeUnordered
 
 emailIndex := model.Equality("email")
-emailIndex.Ordered = false
+emailIndex.Order.Type = OrderTypeUnordered
 
 result1 := []User{}
 result2 := []User{}
