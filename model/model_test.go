@@ -291,11 +291,13 @@ func TestUniqueIndex(t *testing.T) {
 type Tag struct {
 	Slug string `json:"slug"`
 	Age  int    `json:"age"`
+	Type string `json:"type"`
 }
 
 func TestNonIDKeys(t *testing.T) {
 	slugIndex := ByEquality("slug")
 	slugIndex.Order.Type = OrderTypeUnordered
+
 	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, &DBOptions{
 		IdIndex: slugIndex,
 	})
@@ -322,6 +324,43 @@ func TestNonIDKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(users) != 1 {
+		t.Fatal(users)
+	}
+}
+
+// This might be an almost duplicate test, I used it to try reproduce an issue
+// Leaving this here for now as we dont have enough tests anyway.
+func TestListByString(t *testing.T) {
+	slugIndex := ByEquality("slug")
+	slugIndex.Order.Type = OrderTypeUnordered
+
+	typeIndex := ByEquality("type")
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &DBOptions{
+		IdIndex: slugIndex,
+		Debug:   true,
+	})
+
+	err := db.Save(Tag{
+		Slug: "1",
+		Type: "post-tag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Save(Tag{
+		Slug: "2",
+		Type: "post-tag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	users := []Tag{}
+	q := Equals("type", "post-tag")
+	err = db.List(q, &users)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
 		t.Fatal(users)
 	}
 }
