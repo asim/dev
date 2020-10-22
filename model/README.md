@@ -151,10 +151,10 @@ This can sometimes result in large keys saved, as the inverse of a small 1 byte 
 The matter is further complicated by the fact that the padding size must be specified ahead of time.
 
 ```go
-nameIndex := ByEquality("name")
+nameIndex := model.ByEquality("name")
 nameIndex.StringOrderPadLength = 10
 
-nameQuery := Equals("age", 22)
+nameQuery := model.Equals("age", 22)
 // `StringOrderPadLength` is not needed to be specified for the query
 ```
 
@@ -167,7 +167,7 @@ nameIndex.Base32Encode = false
 ## Unique indexes
 
 ```go
-emailIndex := ByEquality("email")
+emailIndex := model.ByEquality("email")
 emailIndex.Unique = true
 ```
 
