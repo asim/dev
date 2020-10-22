@@ -360,6 +360,14 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
 			}
 			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
+		case int64:
+			// int64 gets padded to 19 characters as the maximum value of an int64
+			// is 9223372036854775807
+			// @todo handle negative numbers
+			if i.Desc {
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
+			}
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
