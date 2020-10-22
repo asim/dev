@@ -289,6 +289,7 @@ func (d *db) queryToListKey(i Index, q Query) string {
 	return d.indexToKey(i, "", q.Value, false)
 }
 
+// append id placeholder to `indexToKey` format strings if needed
 func formatWrapper(appendID bool) func(format string) string {
 	return func(format string) string {
 		if appendID {
@@ -298,6 +299,7 @@ func formatWrapper(appendID bool) func(format string) string {
 	}
 }
 
+// append id value to `indexToKey` argument list if needed
 func valueWrapper(appendID bool, id string) func(values ...interface{}) []interface{} {
 	return func(values ...interface{}) []interface{} {
 		if appendID {
