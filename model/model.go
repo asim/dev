@@ -41,11 +41,7 @@ func defaultIndex() Index {
 type db struct {
 	store   store.Store
 	indexes []Index
-	debug   bool
-	// helps logically separate keys in a db where
-	// multiple `DB`s share the same underlying
-	// physical database.
-	Namespace string
+	options DBOptions
 }
 
 // DB represents a place where data can be saved to and
@@ -61,20 +57,33 @@ type DB interface {
 	List(query Query, resultPointer interface{}) error
 }
 
-func NewDB(store store.Store, namespace string, indexes []Index) DB {
-	// filtering out the default id index in case the user passes it in
-	// maybe this should do deduping instead
-	filtered := []Index{}
-	for _, index := range indexes {
-		if !indexesMatch(index, defaultIndex()) {
-			filtered = append(filtered, index)
-		}
-	}
+type DBOptions struct {
+	Debug bool
+	// helps logically separate keys in a db where
+	// multiple `DB`s share the same underlying
+	// physical database.
+	Namespace string
+	IdIndex   Index
+}
 
+func NewDB(store store.Store, indexes []Index, options *DBOptions) DB {
 	debug := false
-	return &db{
-		store, append([]Index{defaultIndex()}, filtered...), debug, namespace,
+	namespace := ""
+	var idIndex Index
+	if options != nil {
+		debug = options.Debug
+		namespace = options.Namespace
+		idIndex = options.IdIndex
 	}
+	if idIndex.Type == "" {
+		idIndex = defaultIndex()
+	}
+	return &db{
+		store, indexes, DBOptions{
+			Debug:     debug,
+			Namespace: namespace,
+			IdIndex:   idIndex,
+		}}
 }
 
 type Index struct {
@@ -159,11 +168,6 @@ func Equals(fieldName string, value interface{}) Query {
 	}
 }
 
-// @todo this basically limits ids to strings
-type idOnly struct {
-	ID string `json:"id"`
-}
-
 func (d *db) Save(instance interface{}) error {
 	// @todo replace this hack with reflection
 	js, err := json.Marshal(instance)
@@ -177,19 +181,11 @@ func (d *db) Save(instance interface{}) error {
 	if err != nil {
 		return err
 	}
-	id, ok := m["ID"].(string)
-	if !ok || len(id) == 0 {
-		id, ok = m["id"].(string)
-		if !ok || len(id) == 0 {
-			return fmt.Errorf("ID of objects must marshal to JSON key 'ID' or 'id'")
-		}
-	}
 
 	// get the old entries so we can compare values
 	// @todo consider some kind of locking (even if it's not distributed) by key here
 	// to avoid 2 read-writes happening at the same time
-	idQuery := Equals("id", id)
-	idQuery.Order.Type = OrderTypeUnordered
+	idQuery := d.options.IdIndex.ToQuery(m[d.options.IdIndex.FieldName])
 
 	oldEntryList := []map[string]interface{}{}
 	err = d.List(idQuery, &oldEntryList)
@@ -206,7 +202,7 @@ func (d *db) Save(instance interface{}) error {
 		if !index.Unique {
 			continue
 		}
-		res := []idOnly{}
+		res := []map[string]interface{}{}
 		q := index.ToQuery(m[index.FieldName])
 		err = d.List(q, &res)
 		if err != nil {
@@ -218,12 +214,13 @@ func (d *db) Save(instance interface{}) error {
 		if len(res) > 1 {
 			return errors.New("Multiple entries found for unique index")
 		}
-		if res[0].ID != id {
+		if res[0][d.options.IdIndex.FieldName] != m[d.options.IdIndex.FieldName] {
 			return errors.New("Unique index violated")
 		}
 	}
 
-	for _, index := range d.indexes {
+	id := m[d.options.IdIndex.FieldName]
+	for _, index := range append(d.indexes, d.options.IdIndex) {
 		// delete non id index keys to prevent stale index values
 		// ie.
 		//
@@ -247,7 +244,7 @@ func (d *db) Save(instance interface{}) error {
 			}
 		}
 		k := d.indexToKey(index, id, m[index.FieldName], true)
-		if d.debug {
+		if d.options.Debug {
 			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
 		}
 		err = d.store.Write(&store.Record{
@@ -262,13 +259,10 @@ func (d *db) Save(instance interface{}) error {
 }
 
 func (d *db) List(query Query, resultSlicePointer interface{}) error {
-	if len(d.indexes) == 0 {
-		return errors.New("No indexes found")
-	}
-	for _, index := range d.indexes {
+	for _, index := range append(d.indexes, d.options.IdIndex) {
 		if indexMatchesQuery(index, query) {
 			k := d.queryToListKey(index, query)
-			if d.debug {
+			if d.options.Debug {
 				fmt.Printf("Listing key %v\n", k)
 			}
 			recs, err := d.store.Read(k, store.ReadPrefix())
@@ -310,7 +304,7 @@ func indexesMatch(i, j Index) bool {
 
 func (d *db) queryToListKey(i Index, q Query) string {
 	if q.Value == nil {
-		return fmt.Sprintf("%v:%v", d.Namespace, indexPrefix(i))
+		return fmt.Sprintf("%v:%v", d.options.Namespace, indexPrefix(i))
 	}
 
 	return d.indexToKey(i, "", q.Value, false)
@@ -327,7 +321,7 @@ func formatWrapper(appendID bool) func(format string) string {
 }
 
 // append id value to `indexToKey` argument list if needed
-func valueWrapper(appendID bool, id string) func(values ...interface{}) []interface{} {
+func valueWrapper(appendID bool, id interface{}) func(values ...interface{}) []interface{} {
 	return func(values ...interface{}) []interface{} {
 		if appendID {
 			return append(values, id)
@@ -344,7 +338,7 @@ func valueWrapper(appendID bool, id string) func(values ...interface{}) []interf
 // users/30/1
 // users/30/2
 // without ids we could only have one 30 year old user in the index
-func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID bool) string {
+func (d *db) indexToKey(i Index, id interface{}, fieldValue interface{}, appendID bool) string {
 	fw := formatWrapper(appendID)
 	vw := valueWrapper(appendID, id)
 
@@ -359,7 +353,7 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			if i.Order.Type != OrderTypeUnordered {
 				return d.getOrderedStringFieldKey(i, id, v, appendID)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
 		case json.Number:
 			// @todo some duplication going on here, see int64 and float64 cases,
 			// move it out to a function
@@ -369,17 +363,17 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 				// is 9223372036854775807
 				// @todo handle negative numbers
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
 			}
 			f64, err := v.Float64()
 			if err == nil {
 				// @todo fix display and padding of floats
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
+					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), math.MaxFloat64-f64)...)
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
 			}
 			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 		case int64:
@@ -387,26 +381,26 @@ func (d *db) indexToKey(i Index, id string, fieldValue interface{}, appendID boo
 			// is 9223372036854775807
 			// @todo handle negative numbers
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case float64:
 			// @todo fix display and padding of floats
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), math.MaxFloat64-v)...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), math.MaxFloat64-v)...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
 			// This could be removed once migrations are implemented
 			// so savings in space for a type reflect in savings in space in the index too.
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
+				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
 		case bool:
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), v)...)
+			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), v)...)
 		}
 		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
 	}
@@ -426,7 +420,7 @@ func indexPrefix(i Index) string {
 }
 
 // pad, reverse and optionally base32 encode string keys
-func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID bool) string {
+func (d *db) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string, appendID bool) string {
 	fw := formatWrapper(appendID)
 	vw := valueWrapper(appendID, id)
 
@@ -478,7 +472,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id, fieldValue string, appendID b
 		keyPart = string(bs)
 
 	}
-	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.Namespace, indexPrefix(i), keyPart)...)
+	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.options.Namespace, indexPrefix(i), keyPart)...)
 }
 
 func (d *db) Delete(query Query) error {
@@ -486,7 +480,7 @@ func (d *db) Delete(query Query) error {
 	if !indexMatchesQuery(defInd, query) {
 		return errors.New("Delete query does not match default index")
 	}
-	results := []idOnly{}
+	results := []map[string]interface{}{}
 	err := d.List(query, &results)
 	if err != nil {
 		return err
@@ -494,8 +488,8 @@ func (d *db) Delete(query Query) error {
 	if len(results) == 0 {
 		return errors.New("No entry found to delete")
 	}
-	key := d.indexToKey(defInd, results[0].ID, map[string]interface{}{
-		"id": results[0].ID,
+	key := d.indexToKey(defInd, results[0][d.options.IdIndex.FieldName], map[string]interface{}{
+		d.options.IdIndex.FieldName: results[0][d.options.IdIndex.FieldName],
 	}, true)
 	fmt.Printf("Deleting key '%v'\n", key)
 	return d.store.Delete(key)
