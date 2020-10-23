@@ -19,6 +19,11 @@ import (
 	"github.com/micro/micro/v3/service/store"
 )
 
+var (
+	ErrorNotFound             = errors.New("not found")
+	ErrorMultipleRecordsFound = errors.New("multiple records found")
+)
+
 type OrderType string
 
 const (
@@ -53,12 +58,16 @@ type db struct {
 type DB interface {
 	// Save any object. Maintains indexes set up.
 	Save(interface{}) error
+	// List objects by a query. Each query requires an appropriate index
+	// to exist. List throws an error if a matching index can't be found.
+	List(query Query, resultSlicePointer interface{}) error
+	// Same as list, but accepts pointer to non slices and
+	// expects to find only one element. Throws error if not found
+	// or if more than two elements are found.
+	Read(query Query, resultPointer interface{}) error
 	// Deletes a record. Delete only support Equals("id", value) for now.
 	// @todo Delete only supports string keys for now.
 	Delete(query Query) error
-	// List objects by a query. Each query requires an appropriate index
-	// to exist. List throws an error if a matching index can't be found.
-	List(query Query, resultPointer interface{}) error
 }
 
 type DBOptions struct {
@@ -253,6 +262,29 @@ func (d *db) Save(instance interface{}) error {
 		}
 	}
 	return nil
+}
+
+func (d *db) Read(query Query, resultPointer interface{}) error {
+	for _, index := range append(d.indexes, d.options.IdIndex) {
+		if indexMatchesQuery(index, query) {
+			k := d.queryToListKey(index, query)
+			if d.options.Debug {
+				fmt.Printf("Listing key '%v'\n", k)
+			}
+			recs, err := d.store.Read(k, store.ReadPrefix())
+			if err != nil {
+				return err
+			}
+			if len(recs) == 0 {
+				return ErrorNotFound
+			}
+			if len(recs) > 1 {
+				return ErrorMultipleRecordsFound
+			}
+			return json.Unmarshal(recs[0].Value, resultPointer)
+		}
+	}
+	return fmt.Errorf("For query type '%v', field '%v' does not match any indexes", query.Type, query.FieldName)
 }
 
 func (d *db) List(query Query, resultSlicePointer interface{}) error {

@@ -46,6 +46,44 @@ func TestEqualsByID(t *testing.T) {
 	}
 }
 
+func TestRead(t *testing.T) {
+	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
+	user := User{}
+	err := db.Read(Equals("age", 25), &user)
+	if err != ErrorNotFound {
+		t.Fatal(err)
+	}
+
+	err = db.Save(User{
+		ID:  "1",
+		Age: 25,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.Read(Equals("age", 25), &user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.ID != "1" {
+		t.Fatal(user)
+	}
+
+	err = db.Save(User{
+		ID:  "2",
+		Age: 25,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.Read(Equals("age", 25), &user)
+	if err != ErrorMultipleRecordsFound {
+		t.Fatal(err)
+	}
+}
+
 func TestEquals(t *testing.T) {
 	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
 
@@ -337,7 +375,7 @@ func TestListByString(t *testing.T) {
 	typeIndex := ByEquality("type")
 	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &DBOptions{
 		IdIndex: slugIndex,
-		Debug:   true,
+		Debug:   false,
 	})
 
 	err := db.Save(Tag{
