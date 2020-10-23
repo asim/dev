@@ -18,16 +18,16 @@ type User struct {
 }
 
 func TestEqualsByID(t *testing.T) {
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, nil)
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, nil)
 
-	err := db.Save(User{
+	err := table.Save(User{
 		ID:  "1",
 		Age: 12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "2",
 		Age: 25,
 	})
@@ -37,7 +37,7 @@ func TestEqualsByID(t *testing.T) {
 	users := []User{}
 	q := Equals("id", "1")
 	q.Order.Type = OrderTypeUnordered
-	err = db.List(q, &users)
+	err = table.List(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +47,14 @@ func TestEqualsByID(t *testing.T) {
 }
 
 func TestRead(t *testing.T) {
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
 	user := User{}
-	err := db.Read(Equals("age", 25), &user)
+	err := table.Read(Equals("age", 25), &user)
 	if err != ErrorNotFound {
 		t.Fatal(err)
 	}
 
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "1",
 		Age: 25,
 	})
@@ -62,7 +62,7 @@ func TestRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = db.Read(Equals("age", 25), &user)
+	err = table.Read(Equals("age", 25), &user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestRead(t *testing.T) {
 		t.Fatal(user)
 	}
 
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "2",
 		Age: 25,
 	})
@@ -78,30 +78,30 @@ func TestRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = db.Read(Equals("age", 25), &user)
+	err = table.Read(Equals("age", 25), &user)
 	if err != ErrorMultipleRecordsFound {
 		t.Fatal(err)
 	}
 }
 
 func TestEquals(t *testing.T) {
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(ByEquality("age")), nil)
 
-	err := db.Save(User{
+	err := table.Save(User{
 		ID:  "1",
 		Age: 12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "2",
 		Age: 25,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "3",
 		Age: 12,
 	})
@@ -109,7 +109,7 @@ func TestEquals(t *testing.T) {
 		t.Fatal(err)
 	}
 	users := []User{}
-	err = db.List(Equals("age", 12), &users)
+	err = table.List(Equals("age", 12), &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +163,9 @@ func TestOrderingStrings(t *testing.T) {
 			tagIndex.Order.Type = OrderTypeDesc
 		}
 		tagIndex.StringOrderPadLength = 12
-		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
+		table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
 		for _, key := range c.tags {
-			err := db.Save(User{
+			err := table.Save(User{
 				ID:  uuid.Must(uuid.NewV4()).String(),
 				Tag: key,
 			})
@@ -178,7 +178,7 @@ func TestOrderingStrings(t *testing.T) {
 		if c.reverse {
 			q.Order.Type = OrderTypeDesc
 		}
-		err := db.List(q, &users)
+		err := table.List(q, &users)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,9 +231,9 @@ func TestOrderingNumbers(t *testing.T) {
 		if c.reverse {
 			createdIndex.Order.Type = OrderTypeDesc
 		}
-		db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(createdIndex), nil)
+		table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(createdIndex), nil)
 		for _, key := range c.dates {
-			err := db.Save(User{
+			err := table.Save(User{
 				ID:      uuid.Must(uuid.NewV4()).String(),
 				Created: int64(key),
 			})
@@ -246,7 +246,7 @@ func TestOrderingNumbers(t *testing.T) {
 		if c.reverse {
 			q.Order.Type = OrderTypeDesc
 		}
-		err := db.List(q, &users)
+		err := table.List(q, &users)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,15 +274,15 @@ func TestOrderingNumbers(t *testing.T) {
 
 func TestStaleIndexRemoval(t *testing.T) {
 	tagIndex := ByEquality("tag")
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
-	err := db.Save(User{
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
+	err := table.Save(User{
 		ID:  "1",
 		Tag: "hi-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "1",
 		Tag: "hello-there",
 	})
@@ -290,7 +290,7 @@ func TestStaleIndexRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := []User{}
-	err = db.List(Equals("tag", nil), &res)
+	err = table.List(Equals("tag", nil), &res)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,22 +302,22 @@ func TestStaleIndexRemoval(t *testing.T) {
 func TestUniqueIndex(t *testing.T) {
 	tagIndex := ByEquality("tag")
 	tagIndex.Unique = true
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
-	err := db.Save(User{
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(tagIndex), nil)
+	err := table.Save(User{
 		ID:  "1",
 		Tag: "hi-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "2",
 		Tag: "hello-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(User{
+	err = table.Save(User{
 		ID:  "3",
 		Tag: "hi-there",
 	})
@@ -336,18 +336,18 @@ func TestNonIDKeys(t *testing.T) {
 	slugIndex := ByEquality("slug")
 	slugIndex.Order.Type = OrderTypeUnordered
 
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, &DBOptions{
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), nil, &TableOptions{
 		IdIndex: slugIndex,
 	})
 
-	err := db.Save(Tag{
+	err := table.Save(Tag{
 		Slug: "1",
 		Age:  12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(Tag{
+	err = table.Save(Tag{
 		Slug: "2",
 		Age:  25,
 	})
@@ -357,7 +357,7 @@ func TestNonIDKeys(t *testing.T) {
 	users := []User{}
 	q := Equals("slug", "1")
 	q.Order.Type = OrderTypeUnordered
-	err = db.List(q, &users)
+	err = table.List(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,32 +373,32 @@ func TestListByString(t *testing.T) {
 	slugIndex.Order.Type = OrderTypeUnordered
 
 	typeIndex := ByEquality("type")
-	db := NewDB(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &DBOptions{
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &TableOptions{
 		IdIndex: slugIndex,
 		Debug:   false,
 	})
 
-	err := db.Save(Tag{
+	err := table.Save(Tag{
 		Slug: "1",
 		Type: "post-tag",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Save(Tag{
+	err = table.Save(Tag{
 		Slug: "2",
 		Type: "post-tag",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	users := []Tag{}
+	tags := []Tag{}
 	q := Equals("type", "post-tag")
-	err = db.List(q, &users)
+	err = table.List(q, &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(users) != 2 {
-		t.Fatal(users)
+	if len(tags) != 2 {
+		t.Fatal(tags)
 	}
 }

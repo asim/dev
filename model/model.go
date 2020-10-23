@@ -43,19 +43,19 @@ func defaultIndex() Index {
 	return idIndex
 }
 
-type db struct {
+type table struct {
 	store store.Store
-	// helps logically separate keys in a db where
-	// multiple `DB`s share the same underlying
+	// helps logically separate keys in a table where
+	// multiple `Table`s share the same underlying
 	// physical database.
 	namespace string
 	indexes   []Index
-	options   DBOptions
+	options   TableOptions
 }
 
-// DB represents a place where data can be saved to and
+// Table represents a place where data can be saved to and
 // queried from.
-type DB interface {
+type Table interface {
 	// Save any object. Maintains indexes set up.
 	Save(interface{}) error
 	// List objects by a query. Each query requires an appropriate index
@@ -70,12 +70,12 @@ type DB interface {
 	Delete(query Query) error
 }
 
-type DBOptions struct {
+type TableOptions struct {
 	Debug   bool
 	IdIndex Index
 }
 
-func NewDB(store store.Store, namespace string, indexes []Index, options *DBOptions) DB {
+func NewTable(store store.Store, namespace string, indexes []Index, options *TableOptions) Table {
 	debug := false
 	var idIndex Index
 	if options != nil {
@@ -85,8 +85,8 @@ func NewDB(store store.Store, namespace string, indexes []Index, options *DBOpti
 	if idIndex.Type == "" {
 		idIndex = defaultIndex()
 	}
-	return &db{
-		store, namespace, indexes, DBOptions{
+	return &table{
+		store, namespace, indexes, TableOptions{
 			Debug:   debug,
 			IdIndex: idIndex,
 		}}
@@ -174,7 +174,7 @@ func Equals(fieldName string, value interface{}) Query {
 	}
 }
 
-func (d *db) Save(instance interface{}) error {
+func (d *table) Save(instance interface{}) error {
 	// @todo replace this hack with reflection
 	js, err := json.Marshal(instance)
 	if err != nil {
@@ -264,7 +264,7 @@ func (d *db) Save(instance interface{}) error {
 	return nil
 }
 
-func (d *db) Read(query Query, resultPointer interface{}) error {
+func (d *table) Read(query Query, resultPointer interface{}) error {
 	for _, index := range append(d.indexes, d.options.IdIndex) {
 		if indexMatchesQuery(index, query) {
 			k := d.queryToListKey(index, query)
@@ -287,7 +287,7 @@ func (d *db) Read(query Query, resultPointer interface{}) error {
 	return fmt.Errorf("For query type '%v', field '%v' does not match any indexes", query.Type, query.FieldName)
 }
 
-func (d *db) List(query Query, resultSlicePointer interface{}) error {
+func (d *table) List(query Query, resultSlicePointer interface{}) error {
 	for _, index := range append(d.indexes, d.options.IdIndex) {
 		if indexMatchesQuery(index, query) {
 			k := d.queryToListKey(index, query)
@@ -331,7 +331,7 @@ func indexesMatch(i, j Index) bool {
 	return false
 }
 
-func (d *db) queryToListKey(i Index, q Query) string {
+func (d *table) queryToListKey(i Index, q Query) string {
 	if q.Value == nil {
 		return fmt.Sprintf("%v:%v", d.namespace, indexPrefix(i))
 	}
@@ -367,7 +367,7 @@ func valueWrapper(appendID bool, id interface{}) func(values ...interface{}) []i
 // users/30/1
 // users/30/2
 // without ids we could only have one 30 year old user in the index
-func (d *db) indexToKey(i Index, id interface{}, fieldValue interface{}, appendID bool) string {
+func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appendID bool) string {
 	fw := formatWrapper(appendID)
 	vw := valueWrapper(appendID, id)
 
@@ -449,7 +449,7 @@ func indexPrefix(i Index) string {
 }
 
 // pad, reverse and optionally base32 encode string keys
-func (d *db) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string, appendID bool) string {
+func (d *table) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string, appendID bool) string {
 	fw := formatWrapper(appendID)
 	vw := valueWrapper(appendID, id)
 
@@ -504,7 +504,7 @@ func (d *db) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string
 	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), keyPart)...)
 }
 
-func (d *db) Delete(query Query) error {
+func (d *table) Delete(query Query) error {
 	defInd := defaultIndex()
 	if !indexMatchesQuery(defInd, query) {
 		return errors.New("Delete query does not match default index")
