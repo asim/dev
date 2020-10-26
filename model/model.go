@@ -377,6 +377,11 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 		if len(fieldName) == 0 {
 			fieldName = "id"
 		}
+		typ := reflect.TypeOf(fieldValue)
+		typName := "nil"
+		if typ != nil {
+			typName = typ.String()
+		}
 		switch v := fieldValue.(type) {
 		case string:
 			if i.Order.Type != OrderTypeUnordered {
@@ -404,7 +409,7 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 				}
 				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 			}
-			panic("bug in code, unhandled json.Number type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
+			panic("bug in code, unhandled json.Number type: " + typName + " for field " + i.FieldName)
 		case int64:
 			// int64 gets padded to 19 characters as the maximum value of an int64
 			// is 9223372036854775807
@@ -431,7 +436,7 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 		case bool:
 			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
 		}
-		panic("bug in code, unhandled type: " + reflect.TypeOf(fieldValue).String() + " for field " + i.FieldName)
+		panic("bug in code, unhandled type: " + typName + " for field " + i.FieldName)
 	}
 	return ""
 }
