@@ -455,4 +455,12 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 	if tags[1].Age != 15 {
 		t.Fatal(tags)
 	}
+
+	err = table.List(typeIndex.ToQuery(nil), &tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 3 {
+		t.Fatal(tags)
+	}
 }

@@ -243,13 +243,13 @@ func (d *table) Save(instance interface{}) error {
 		if !indexesMatch(defaultIndex(), index) &&
 			oldEntry != nil &&
 			oldEntry[index.FieldName] != m[index.FieldName] {
-			k := d.indexToKey(index, id, oldEntry[index.FieldName], true)
+			k := d.indexToKey(index, id, oldEntry, true)
 			err = d.store.Delete(k)
 			if err != nil {
 				return err
 			}
 		}
-		k := d.indexToKey(index, id, m[index.FieldName], true)
+		k := d.indexToKey(index, id, m, true)
 		if d.options.Debug {
 			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
 		}
@@ -335,8 +335,13 @@ func (d *table) queryToListKey(i Index, q Query) string {
 	if q.Value == nil {
 		return fmt.Sprintf("%v:%v", d.namespace, indexPrefix(i))
 	}
+	if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
+		return fmt.Sprintf("%v:%v:%v", d.namespace, indexPrefix(i), q.Value)
+	}
 
-	return d.indexToKey(i, "", q.Value, false)
+	return d.indexToKey(i, "", map[string]interface{}{
+		i.FieldName: q.Value,
+	}, false)
 }
 
 // appendID true should be used when saving, false when querying
@@ -347,17 +352,25 @@ func (d *table) queryToListKey(i Index, q Query) string {
 // users/30/1
 // users/30/2
 // without ids we could only have one 30 year old user in the index
-func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appendID bool) string {
+func (d *table) indexToKey(i Index, id interface{}, entry map[string]interface{}, appendID bool) string {
 	format := "%v:%v"
 	values := []interface{}{d.namespace, indexPrefix(i)}
+	filterFieldValue := entry[i.FieldName]
+	orderFieldValue := entry[i.FieldName]
+	orderFieldKey := i.FieldName
+	if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
+		orderFieldValue = entry[i.Order.FieldName]
+		orderFieldKey = i.Order.FieldName
+	}
 
 	switch i.Type {
 	case indexTypeEq:
-		fieldName := i.FieldName
-		if len(fieldName) == 0 {
-			fieldName = "id"
+		if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
+			format += ":%v"
+			values = append(values, filterFieldValue)
 		}
-		typ := reflect.TypeOf(fieldValue)
+
+		typ := reflect.TypeOf(orderFieldValue)
 		typName := "nil"
 		if typ != nil {
 			typName = typ.String()
@@ -366,7 +379,7 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 		format += ":%v"
 		// Handle the ordering part of the key.
 		// The filter and the ordering field might be the same
-		switch v := fieldValue.(type) {
+		switch v := orderFieldValue.(type) {
 		case string:
 			if i.Order.Type != OrderTypeUnordered {
 				values = append(values, d.getOrderedStringFieldKey(i, v))
@@ -428,7 +441,7 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 		case bool:
 			values = append(values, v)
 		default:
-			panic("bug in code, unhandled type: " + typName + " for field " + i.FieldName)
+			panic("bug in code, unhandled type: " + typName + " for field " + orderFieldKey)
 		}
 	}
 
