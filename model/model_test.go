@@ -402,3 +402,57 @@ func TestListByString(t *testing.T) {
 		t.Fatal(tags)
 	}
 }
+
+func TestOderByDifferentFieldThanFilterField(t *testing.T) {
+	slugIndex := ByEquality("slug")
+	slugIndex.Order.Type = OrderTypeUnordered
+
+	typeIndex := ByEquality("type")
+	typeIndex.Order = Order{
+		Type:      OrderTypeDesc,
+		FieldName: "age",
+	}
+	table := NewTable(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &TableOptions{
+		IdIndex: slugIndex,
+		Debug:   false,
+	})
+
+	err := table.Save(Tag{
+		Slug: "1",
+		Type: "post-tag",
+		Age:  15,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = table.Save(Tag{
+		Slug: "2",
+		Type: "post-tag",
+		Age:  25,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = table.Save(Tag{
+		Slug: "3",
+		Type: "other-tag",
+		Age:  30,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := []Tag{}
+	err = table.List(typeIndex.ToQuery("post-tag"), &tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 {
+		t.Fatal(tags)
+	}
+	if tags[0].Age != 25 {
+		t.Fatal(tags)
+	}
+	if tags[1].Age != 15 {
+		t.Fatal(tags)
+	}
+}

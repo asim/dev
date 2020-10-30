@@ -339,26 +339,6 @@ func (d *table) queryToListKey(i Index, q Query) string {
 	return d.indexToKey(i, "", q.Value, false)
 }
 
-// append id placeholder to `indexToKey` format strings if needed
-func formatWrapper(appendID bool) func(format string) string {
-	return func(format string) string {
-		if appendID {
-			return format + ":%v"
-		}
-		return format
-	}
-}
-
-// append id value to `indexToKey` argument list if needed
-func valueWrapper(appendID bool, id interface{}) func(values ...interface{}) []interface{} {
-	return func(values ...interface{}) []interface{} {
-		if appendID {
-			return append(values, id)
-		}
-		return values
-	}
-}
-
 // appendID true should be used when saving, false when querying
 // appendID false should also be used for 'id' indexes since they already have the unique
 // id. The reason id gets appended is make duplicated index keys unique.
@@ -368,8 +348,8 @@ func valueWrapper(appendID bool, id interface{}) func(values ...interface{}) []i
 // users/30/2
 // without ids we could only have one 30 year old user in the index
 func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appendID bool) string {
-	fw := formatWrapper(appendID)
-	vw := valueWrapper(appendID, id)
+	format := "%v:%v"
+	values := []interface{}{d.namespace, indexPrefix(i)}
 
 	switch i.Type {
 	case indexTypeEq:
@@ -382,12 +362,17 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 		if typ != nil {
 			typName = typ.String()
 		}
+
+		format += ":%v"
+		// Handle the ordering part of the key.
+		// The filter and the ordering field might be the same
 		switch v := fieldValue.(type) {
 		case string:
 			if i.Order.Type != OrderTypeUnordered {
-				return d.getOrderedStringFieldKey(i, id, v, appendID)
+				values = append(values, d.getOrderedStringFieldKey(i, v))
+				break
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
+			values = append(values, v)
 		case json.Number:
 			// @todo some duplication going on here, see int64 and float64 cases,
 			// move it out to a function
@@ -397,17 +382,21 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 				// is 9223372036854775807
 				// @todo handle negative numbers
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-i64))...)
+					values = append(values, fmt.Sprintf("%019d", math.MaxInt64-i64))
+					break
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", i64))...)
+				values = append(values, fmt.Sprintf("%019d", i64))
+				break
 			}
 			f64, err := v.Float64()
 			if err == nil {
 				// @todo fix display and padding of floats
 				if i.Order.Type == OrderTypeDesc {
-					return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), math.MaxFloat64-f64)...)
+					values = append(values, math.MaxFloat64-f64)
+					break
 				}
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
+				values = append(values, v)
+				break
 			}
 			panic("bug in code, unhandled json.Number type: " + typName + " for field " + i.FieldName)
 		case int64:
@@ -415,30 +404,39 @@ func (d *table) indexToKey(i Index, id interface{}, fieldValue interface{}, appe
 			// is 9223372036854775807
 			// @todo handle negative numbers
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt64-v))...)
+				values = append(values, fmt.Sprintf("%019d", math.MaxInt64-v))
+				break
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			values = append(values, fmt.Sprintf("%019d", v))
 		case float64:
 			// @todo fix display and padding of floats
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), math.MaxFloat64-v)...)
+				values = append(values, math.MaxFloat64-v)
+				break
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
+			values = append(values, v)
 		case int:
 			// int gets padded to the same length as int64 to gain
 			// resiliency in case of model type changes.
 			// This could be removed once migrations are implemented
 			// so savings in space for a type reflect in savings in space in the index too.
 			if i.Order.Type == OrderTypeDesc {
-				return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", math.MaxInt32-v))...)
+				values = append(values, fmt.Sprintf("%019d", math.MaxInt32-v))
+				break
 			}
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), fmt.Sprintf("%019d", v))...)
+			values = append(values, fmt.Sprintf("%019d", v))
 		case bool:
-			return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), v)...)
+			values = append(values, v)
+		default:
+			panic("bug in code, unhandled type: " + typName + " for field " + i.FieldName)
 		}
-		panic("bug in code, unhandled type: " + typName + " for field " + i.FieldName)
 	}
-	return ""
+
+	if appendID {
+		format += ":%v"
+		values = append(values, id)
+	}
+	return fmt.Sprintf(format, values...)
 }
 
 // indexPrefix returns the first part of the keys, the namespace + index name
@@ -454,10 +452,7 @@ func indexPrefix(i Index) string {
 }
 
 // pad, reverse and optionally base32 encode string keys
-func (d *table) getOrderedStringFieldKey(i Index, id interface{}, fieldValue string, appendID bool) string {
-	fw := formatWrapper(appendID)
-	vw := valueWrapper(appendID, id)
-
+func (d *table) getOrderedStringFieldKey(i Index, fieldValue string) string {
 	runes := []rune{}
 	if i.Order.Type == OrderTypeDesc {
 		for _, char := range fieldValue {
@@ -506,7 +501,7 @@ func (d *table) getOrderedStringFieldKey(i Index, id interface{}, fieldValue str
 		keyPart = string(bs)
 
 	}
-	return fmt.Sprintf(fw("%v:%v:%v"), vw(d.namespace, indexPrefix(i), keyPart)...)
+	return keyPart
 }
 
 func (d *table) Delete(query Query) error {
