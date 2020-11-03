@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/micro/dev/model"
 	"github.com/micro/micro/v3/service/logger"
 	"github.com/micro/micro/v3/service/store"
-
-	"github.com/micro/dev/model"
 
 	proto "posts/proto"
 
