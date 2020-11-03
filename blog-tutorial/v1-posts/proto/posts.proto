@@ -4,6 +4,8 @@ package posts;
 
 service Posts {
 	rpc Save(SaveRequest) returns (SaveResponse) {}
+	rpc Query(QueryRequest) returns (QueryResponse) {}
+	rpc Delete(DeleteRequest) returns (DeleteResponse) {}
 }
 
 message SaveRequest {

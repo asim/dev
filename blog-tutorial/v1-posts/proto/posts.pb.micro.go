@@ -43,6 +43,8 @@ func NewPostsEndpoints() []*api.Endpoint {
 
 type PostsService interface {
 	Save(ctx context.Context, in *SaveRequest, opts ...client.CallOption) (*SaveResponse, error)
+	Query(ctx context.Context, in *QueryRequest, opts ...client.CallOption) (*QueryResponse, error)
+	Delete(ctx context.Context, in *DeleteRequest, opts ...client.CallOption) (*DeleteResponse, error)
 }
 
 type postsService struct {
@@ -67,15 +69,39 @@ func (c *postsService) Save(ctx context.Context, in *SaveRequest, opts ...client
 	return out, nil
 }
 
+func (c *postsService) Query(ctx context.Context, in *QueryRequest, opts ...client.CallOption) (*QueryResponse, error) {
+	req := c.c.NewRequest(c.name, "Posts.Query", in)
+	out := new(QueryResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *postsService) Delete(ctx context.Context, in *DeleteRequest, opts ...client.CallOption) (*DeleteResponse, error) {
+	req := c.c.NewRequest(c.name, "Posts.Delete", in)
+	out := new(DeleteResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Posts service
 
 type PostsHandler interface {
 	Save(context.Context, *SaveRequest, *SaveResponse) error
+	Query(context.Context, *QueryRequest, *QueryResponse) error
+	Delete(context.Context, *DeleteRequest, *DeleteResponse) error
 }
 
 func RegisterPostsHandler(s server.Server, hdlr PostsHandler, opts ...server.HandlerOption) error {
 	type posts interface {
 		Save(ctx context.Context, in *SaveRequest, out *SaveResponse) error
+		Query(ctx context.Context, in *QueryRequest, out *QueryResponse) error
+		Delete(ctx context.Context, in *DeleteRequest, out *DeleteResponse) error
 	}
 	type Posts struct {
 		posts
@@ -90,4 +116,12 @@ type postsHandler struct {
 
 func (h *postsHandler) Save(ctx context.Context, in *SaveRequest, out *SaveResponse) error {
 	return h.PostsHandler.Save(ctx, in, out)
+}
+
+func (h *postsHandler) Query(ctx context.Context, in *QueryRequest, out *QueryResponse) error {
+	return h.PostsHandler.Query(ctx, in, out)
+}
+
+func (h *postsHandler) Delete(ctx context.Context, in *DeleteRequest, out *DeleteResponse) error {
+	return h.PostsHandler.Delete(ctx, in, out)
 }
