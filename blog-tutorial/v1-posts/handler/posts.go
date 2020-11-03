@@ -70,7 +70,7 @@ func (p *Posts) Query(ctx context.Context, req *proto.QueryRequest, rsp *proto.Q
 		q = p.idIndex.ToQuery(req.Id)
 	} else {
 		q = p.createdIndex.ToQuery(nil)
-		q.Order.Type = model.OrderTypeDesc
+
 		var limit uint
 		limit = 20
 		if req.Limit > 0 {
