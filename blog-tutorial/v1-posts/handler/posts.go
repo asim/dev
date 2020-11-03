@@ -55,7 +55,7 @@ func (p *Posts) Save(ctx context.Context, req *proto.SaveRequest, rsp *proto.Sav
 		Created: time.Now().Unix(),
 	}
 	if req.Slug == "" {
-		req.Slug = slug.Make(req.Title)
+		post.Slug = slug.Make(req.Title)
 	}
 	return p.db.Save(post)
 }
