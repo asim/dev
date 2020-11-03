@@ -16,6 +16,7 @@ import (
 
 type Posts struct {
 	db           model.Model
+	idIndex      model.Index
 	createdIndex model.Index
 	slugIndex    model.Index
 }
@@ -26,15 +27,21 @@ func NewPosts() *Posts {
 
 	slugIndex := model.ByEquality("slug")
 
+	idIndex := model.ByEquality("id")
+	idIndex.Order.Type = model.OrderTypeUnordered
+
 	return &Posts{
 		db: model.New(
 			store.DefaultStore,
 			"posts",
 			model.Indexes(slugIndex, createdIndex),
-			nil,
+			&model.ModelOptions{
+				IdIndex: idIndex,
+			},
 		),
 		createdIndex: createdIndex,
 		slugIndex:    slugIndex,
+		idIndex:      idIndex,
 	}
 }
 
@@ -57,13 +64,12 @@ func (p *Posts) Query(ctx context.Context, req *proto.QueryRequest, rsp *proto.Q
 	var q model.Query
 	if len(req.Slug) > 0 {
 		logger.Infof("Reading post by slug: %v", req.Slug)
-		q = model.Equals("slug", req.Slug)
+		q = p.slugIndex.ToQuery(req.Slug)
 	} else if len(req.Id) > 0 {
 		logger.Infof("Reading post by id: %v", req.Id)
-		q = model.Equals("id", req.Id)
-		q.Order.Type = model.OrderTypeUnordered
+		q = p.idIndex.ToQuery(req.Id)
 	} else {
-		q = model.Equals("created", nil)
+		q = p.createdIndex.ToQuery(nil)
 		q.Order.Type = model.OrderTypeDesc
 		var limit uint
 		limit = 20
