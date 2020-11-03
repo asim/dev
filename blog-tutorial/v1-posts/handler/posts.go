@@ -86,16 +86,7 @@ func (p *Posts) Query(ctx context.Context, req *proto.QueryRequest, rsp *proto.Q
 	if err != nil {
 		return errors.BadRequest("proto.query.store-read", "Failed to read from store: %v", err.Error())
 	}
-	rsp.Posts = make([]*proto.Post, len(posts))
-	for i, post := range posts {
-		rsp.Posts[i] = &proto.Post{
-			Id:      post.Id,
-			Title:   post.Title,
-			Slug:    post.Slug,
-			Content: post.Content,
-			Tags:    post.Tags,
-		}
-	}
+	rsp.Posts = posts
 	return nil
 }
 
