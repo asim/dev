@@ -75,7 +75,7 @@ type ModelOptions struct {
 	IdIndex Index
 }
 
-func NewModel(store store.Store, namespace string, indexes []Index, options *ModelOptions) Model {
+func New(store store.Store, namespace string, indexes []Index, options *ModelOptions) Model {
 	debug := false
 	var idIndex Index
 	if options != nil {

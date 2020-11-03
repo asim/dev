@@ -31,7 +31,7 @@ For each field we want to query on we have to create an index. Index by `id` is 
 ```go
 ageIndex := model.ByEquality("age")
 
-db := model.NewDB(fs.NewStore(), "users", []model.Index{(ageIndex})
+db := model.New(fs.NewStore(), "users", []model.Index{(ageIndex})
 
 err := db.Save(User{
     ID: "1",
@@ -81,6 +81,21 @@ ageQuery := model.Equals("age", 22)
 ageQuery.Order.Type = OrderTypeUnordered
 ```
 
+### Filtering by one field, ordering by other
+
+```go
+typeIndex := ByEquality("type")
+typeIndex.Order = Order{
+	Type:      OrderTypeDesc,
+	FieldName: "age",
+}
+
+// Results will be ordered by age
+db.List(typeIndex.ToQuery("a-certain-type-value"))
+```
+
+By default the ordering field is the same as the filtering field.
+
 ### Reverse order
 
 ```go
@@ -118,6 +133,18 @@ query.Order.Type = OrderTypeUnordered
 // List unordered by age where age = 20
 query2 := model.Equals("age", 20)
 query2.Order.Type = OrderTypeUnordered
+```
+
+Of course, maintaining this might be inconvenient, for this reason the `ToQuery` method was introduced, see below.
+
+#### Creating a query out of an Index
+
+```go
+
+index := model.Equality("age")
+index.Order.Type = OrderTypeUnordered
+
+db.List(index.ToQuery(25))
 ```
 
 ### Unordered listing without value
