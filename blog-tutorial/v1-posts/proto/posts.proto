@@ -29,3 +29,23 @@ message Post {
 	string author = 7;
 	repeated string tags = 8;
 }
+
+// Query posts. Acts as a listing when no id or slug provided.
+// Gets a single post by id or slug if any of them provided.
+message QueryRequest {
+	string id = 1;
+	string slug = 2;
+	string tag = 3;
+	int64 offset = 4;
+	int64 limit = 5;
+}
+
+message QueryResponse {
+	repeated Post posts = 1;
+}
+
+message DeleteRequest {
+	string id = 1;
+}
+
+message DeleteResponse {}
