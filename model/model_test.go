@@ -464,3 +464,53 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 		t.Fatal(tags)
 	}
 }
+
+func TestDeleteIndexCleanup(t *testing.T) {
+	slugIndex := ByEquality("slug")
+	slugIndex.Order.Type = OrderTypeUnordered
+
+	typeIndex := ByEquality("type")
+	table := New(fs.NewStore(), uuid.Must(uuid.NewV4()).String(), Indexes(typeIndex), &ModelOptions{
+		IdIndex: slugIndex,
+		Debug:   false,
+	})
+
+	err := table.Save(Tag{
+		Slug: "1",
+		Type: "post-tag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = table.Save(Tag{
+		Slug: "2",
+		Type: "post-tag",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := []Tag{}
+	q := Equals("type", "post-tag")
+	err = table.List(q, &tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 {
+		t.Fatal(tags)
+	}
+
+	err = table.Delete(slugIndex.ToQuery("1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	q = Equals("type", "post-tag")
+	err = table.List(q, &tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 {
+		t.Fatal(tags)
+	}
+
+}

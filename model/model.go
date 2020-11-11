@@ -518,8 +518,7 @@ func (d *model) getOrderedStringFieldKey(i Index, fieldValue string) string {
 }
 
 func (d *model) Delete(query Query) error {
-	defInd := defaultIndex()
-	if !indexMatchesQuery(defInd, query) {
+	if !indexMatchesQuery(d.options.IdIndex, query) {
 		return errors.New("Delete query does not match default index")
 	}
 	results := []map[string]interface{}{}
@@ -530,9 +529,11 @@ func (d *model) Delete(query Query) error {
 	if len(results) == 0 {
 		return errors.New("No entry found to delete")
 	}
-	key := d.indexToKey(defInd, results[0][d.options.IdIndex.FieldName], map[string]interface{}{
+	key := d.indexToKey(d.options.IdIndex, results[0][d.options.IdIndex.FieldName], map[string]interface{}{
 		d.options.IdIndex.FieldName: results[0][d.options.IdIndex.FieldName],
 	}, true)
-	fmt.Printf("Deleting key '%v'\n", key)
+	if d.options.Debug {
+		fmt.Printf("Deleting key '%v'\n", key)
+	}
 	return d.store.Delete(key)
 }
