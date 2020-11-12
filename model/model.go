@@ -6,7 +6,6 @@
 package model
 
 import (
-	"bytes"
 	"encoding/base32"
 	"encoding/json"
 	"errors"
@@ -38,7 +37,7 @@ const (
 )
 
 func defaultIndex() Index {
-	idIndex := ByEquality("id")
+	idIndex := ByEquality("ID")
 	idIndex.Order.Type = OrderTypeUnordered
 	return idIndex
 }
@@ -51,6 +50,7 @@ type model struct {
 	namespace string
 	indexes   []Index
 	options   ModelOptions
+	instance  interface{}
 }
 
 // Model represents a place where data can be saved to and
@@ -75,7 +75,7 @@ type ModelOptions struct {
 	IdIndex Index
 }
 
-func New(store store.Store, namespace string, indexes []Index, options *ModelOptions) Model {
+func New(store store.Store, namespace string, instance interface{}, indexes []Index, options *ModelOptions) Model {
 	debug := false
 	var idIndex Index
 	if options != nil {
@@ -89,7 +89,7 @@ func New(store store.Store, namespace string, indexes []Index, options *ModelOpt
 		store, namespace, indexes, ModelOptions{
 			Debug:   debug,
 			IdIndex: idIndex,
-		}}
+		}, instance}
 }
 
 type Index struct {
@@ -180,27 +180,17 @@ func (d *model) Save(instance interface{}) error {
 	if err != nil {
 		return err
 	}
-	m := map[string]interface{}{}
-	de := json.NewDecoder(bytes.NewReader(js))
-	de.UseNumber()
-	err = de.Decode(&m)
-	if err != nil {
-		return err
-	}
 
 	// get the old entries so we can compare values
 	// @todo consider some kind of locking (even if it's not distributed) by key here
 	// to avoid 2 read-writes happening at the same time
-	idQuery := d.options.IdIndex.ToQuery(m[d.options.IdIndex.FieldName])
+	idQuery := d.options.IdIndex.ToQuery(getFieldValue(instance, d.options.IdIndex.FieldName))
 
-	oldEntryList := []map[string]interface{}{}
-	err = d.List(idQuery, &oldEntryList)
-	if err != nil {
+	oldEntry := reflect.New(reflect.ValueOf(instance).Type()).Interface()
+
+	err = d.Read(idQuery, &oldEntry)
+	if err != nil && err != ErrorNotFound {
 		return err
-	}
-	var oldEntry map[string]interface{}
-	if len(oldEntryList) > 0 {
-		oldEntry = oldEntryList[0]
 	}
 
 	// Do uniqueness checks before saving any data
@@ -208,24 +198,27 @@ func (d *model) Save(instance interface{}) error {
 		if !index.Unique {
 			continue
 		}
-		res := []map[string]interface{}{}
-		q := index.ToQuery(m[index.FieldName])
-		err = d.List(q, &res)
-		if err != nil {
+		elemType := reflect.TypeOf(d.instance)
+		elemSlice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
+		slice := elemSlice().Interface()
+		err = d.Read(idQuery, &oldEntry)
+		if err != nil && err != ErrorNotFound {
 			return err
 		}
-		if len(res) == 0 {
-			continue
-		}
-		if len(res) > 1 {
+
+		if elemSlice.Len() > 1 {
 			return errors.New("Multiple entries found for unique index")
 		}
-		if res[0][d.options.IdIndex.FieldName] != m[d.options.IdIndex.FieldName] {
+		if elemSlice.Len() == 0 {
+			break
+		}
+		fmt.Println(elemSlice.Index(0).Interface(), instance)
+		if !reflect.DeepEqual(getFieldValue(elemSlice.Index(0).Interface(), d.options.IdIndex.FieldName), getFieldValue(instance, d.options.IdIndex.FieldName)) {
 			return errors.New("Unique index violated")
 		}
 	}
 
-	id := m[d.options.IdIndex.FieldName]
+	id := getFieldValue(instance, d.options.IdIndex.FieldName)
 	for _, index := range append(d.indexes, d.options.IdIndex) {
 		// delete non id index keys to prevent stale index values
 		// ie.
@@ -240,16 +233,17 @@ func (d *model) Save(instance interface{}) error {
 		// @todo this check will only work for POD types, ie no slices or maps
 		// but it's not an issue as right now indexes are only supported on POD
 		// types anyway
-		if !indexesMatch(defaultIndex(), index) &&
+		if !indexesMatch(d.options.IdIndex, index) &&
 			oldEntry != nil &&
-			oldEntry[index.FieldName] != m[index.FieldName] {
+			!reflect.DeepEqual(getFieldValue(oldEntry, index.FieldName), getFieldValue(instance, index.FieldName)) {
 			k := d.indexToKey(index, id, oldEntry, true)
+			fmt.Println("DELETING", k)
 			err = d.store.Delete(k)
 			if err != nil {
 				return err
 			}
 		}
-		k := d.indexToKey(index, id, m, true)
+		k := d.indexToKey(index, id, instance, true)
 		if d.options.Debug {
 			fmt.Printf("Saving key '%v', value: '%v'\n", k, string(js))
 		}
@@ -262,6 +256,18 @@ func (d *model) Save(instance interface{}) error {
 		}
 	}
 	return nil
+}
+
+func getFieldValue(struc interface{}, field string) interface{} {
+	r := reflect.ValueOf(struc)
+	f := reflect.Indirect(r).FieldByName(strings.Title(field))
+	return f.Interface()
+}
+
+func setFieldValue(struc interface{}, field string, value interface{}) {
+	r := reflect.ValueOf(struc)
+	f := reflect.Indirect(r).FieldByName(strings.Title(field))
+	f.Set(reflect.ValueOf(value))
 }
 
 func (d *model) Read(query Query, resultPointer interface{}) error {
@@ -339,9 +345,11 @@ func (d *model) queryToListKey(i Index, q Query) string {
 		return fmt.Sprintf("%v:%v:%v", d.namespace, indexPrefix(i), q.Value)
 	}
 
-	return d.indexToKey(i, "", map[string]interface{}{
-		i.FieldName: q.Value,
-	}, false)
+	val := reflect.New(reflect.ValueOf(d.instance).Type()).Interface()
+	if q.Value != nil {
+		setFieldValue(val, i.FieldName, q.Value)
+	}
+	return d.indexToKey(i, "", val, false)
 }
 
 // appendID true should be used when saving, false when querying
@@ -352,14 +360,14 @@ func (d *model) queryToListKey(i Index, q Query) string {
 // users/30/1
 // users/30/2
 // without ids we could only have one 30 year old user in the index
-func (d *model) indexToKey(i Index, id interface{}, entry map[string]interface{}, appendID bool) string {
+func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID bool) string {
 	format := "%v:%v"
 	values := []interface{}{d.namespace, indexPrefix(i)}
-	filterFieldValue := entry[i.FieldName]
-	orderFieldValue := entry[i.FieldName]
+	filterFieldValue := getFieldValue(entry, i.FieldName)
+	orderFieldValue := getFieldValue(entry, i.FieldName)
 	orderFieldKey := i.FieldName
 	if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
-		orderFieldValue = entry[i.Order.FieldName]
+		orderFieldValue = getFieldValue(entry, i.Order.FieldName)
 		orderFieldKey = i.Order.FieldName
 	}
 
@@ -521,14 +529,10 @@ func (d *model) Delete(query Query) error {
 	if !indexMatchesQuery(d.options.IdIndex, query) {
 		return errors.New("Delete query does not match default index")
 	}
-	results := []map[string]interface{}{}
-	err := d.List(query, &results)
+	oldEntry := reflect.New(reflect.ValueOf(d.instance).Type()).Interface()
+	err := d.Read(query, &oldEntry)
 	if err != nil {
 		return err
-	}
-	if len(results) == 0 {
-		// @todo should not fail to be idempotent?
-		return errors.New("No entry found to delete")
 	}
 
 	// first delete maintained indexes then id index
@@ -536,9 +540,7 @@ func (d *model) Delete(query Query) error {
 	// be deletable by id again but the maintained indexes
 	// will be stuck in limbo
 	for _, index := range append(d.indexes, d.options.IdIndex) {
-		key := d.indexToKey(index, results[0][d.options.IdIndex.FieldName], map[string]interface{}{
-			index.FieldName: results[0][index.FieldName],
-		}, true)
+		key := d.indexToKey(index, getFieldValue(oldEntry, d.options.IdIndex.FieldName), oldEntry, true)
 		if d.options.Debug {
 			fmt.Printf("Deleting key '%v'\n", key)
 		}
