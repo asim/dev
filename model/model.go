@@ -198,23 +198,14 @@ func (d *model) Save(instance interface{}) error {
 		if !index.Unique {
 			continue
 		}
-		elemType := reflect.TypeOf(d.instance)
-		elemSlice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, 0)
-		slice := elemSlice().Interface()
-		err = d.Read(idQuery, &oldEntry)
+		potentialClash := reflect.New(reflect.ValueOf(instance).Type()).Interface()
+		err = d.Read(index.ToQuery(getFieldValue(instance, index.FieldName)), &potentialClash)
 		if err != nil && err != ErrorNotFound {
 			return err
 		}
 
-		if elemSlice.Len() > 1 {
-			return errors.New("Multiple entries found for unique index")
-		}
-		if elemSlice.Len() == 0 {
-			break
-		}
-		fmt.Println(elemSlice.Index(0).Interface(), instance)
-		if !reflect.DeepEqual(getFieldValue(elemSlice.Index(0).Interface(), d.options.IdIndex.FieldName), getFieldValue(instance, d.options.IdIndex.FieldName)) {
-			return errors.New("Unique index violated")
+		if err == nil {
+			return errors.New("Unique index violation")
 		}
 	}
 
@@ -237,7 +228,6 @@ func (d *model) Save(instance interface{}) error {
 			oldEntry != nil &&
 			!reflect.DeepEqual(getFieldValue(oldEntry, index.FieldName), getFieldValue(instance, index.FieldName)) {
 			k := d.indexToKey(index, id, oldEntry, true)
-			fmt.Println("DELETING", k)
 			err = d.store.Delete(k)
 			if err != nil {
 				return err
