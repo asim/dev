@@ -71,16 +71,24 @@ type Model interface {
 }
 
 type ModelOptions struct {
-	Debug   bool
-	IdIndex Index
+	Debug     bool
+	IdIndex   Index
+	Namespace string
 }
 
-func New(store store.Store, namespace string, instance interface{}, indexes []Index, options *ModelOptions) Model {
+func New(store store.Store, instance interface{}, indexes []Index, options *ModelOptions) Model {
 	debug := false
 	var idIndex Index
+	namespace := reflect.TypeOf(instance).String()
 	if options != nil {
 		debug = options.Debug
-		idIndex = options.IdIndex
+		if options.IdIndex.Type != "" {
+			idIndex = options.IdIndex
+		}
+
+		if len(options.Namespace) > 0 {
+			namespace = options.Namespace
+		}
 	}
 	if idIndex.Type == "" {
 		idIndex = defaultIndex()
