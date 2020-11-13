@@ -364,6 +364,7 @@ func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID 
 	filterFieldValue := getFieldValue(entry, i.FieldName)
 	orderFieldValue := getFieldValue(entry, i.FieldName)
 	orderFieldKey := i.FieldName
+
 	if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
 		orderFieldValue = getFieldValue(entry, i.Order.FieldName)
 		orderFieldKey = i.Order.FieldName
@@ -371,84 +372,62 @@ func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID 
 
 	switch i.Type {
 	case indexTypeEq:
+		// If the filtering field is different than the ordering field,
+		// append the filter key to the key.
 		if i.FieldName != i.Order.FieldName && i.Order.FieldName != "" {
 			format += ":%v"
 			values = append(values, filterFieldValue)
 		}
+	}
 
-		typ := reflect.TypeOf(orderFieldValue)
-		typName := "nil"
-		if typ != nil {
-			typName = typ.String()
-		}
+	// Handle the ordering part of the key.
+	// The filter and the ordering field might be the same
+	typ := reflect.TypeOf(orderFieldValue)
+	typName := "nil"
+	if typ != nil {
+		typName = typ.String()
+	}
+	format += ":%v"
 
-		format += ":%v"
-		// Handle the ordering part of the key.
-		// The filter and the ordering field might be the same
-		switch v := orderFieldValue.(type) {
-		case string:
-			if i.Order.Type != OrderTypeUnordered {
-				values = append(values, d.getOrderedStringFieldKey(i, v))
-				break
-			}
-			values = append(values, v)
-		case json.Number:
-			// @todo some duplication going on here, see int64 and float64 cases,
-			// move it out to a function
-			i64, err := v.Int64()
-			if err == nil {
-				// int64 gets padded to 19 characters as the maximum value of an int64
-				// is 9223372036854775807
-				// @todo handle negative numbers
-				if i.Order.Type == OrderTypeDesc {
-					values = append(values, fmt.Sprintf("%019d", math.MaxInt64-i64))
-					break
-				}
-				values = append(values, fmt.Sprintf("%019d", i64))
-				break
-			}
-			f64, err := v.Float64()
-			if err == nil {
-				// @todo fix display and padding of floats
-				if i.Order.Type == OrderTypeDesc {
-					values = append(values, math.MaxFloat64-f64)
-					break
-				}
-				values = append(values, v)
-				break
-			}
-			panic("bug in code, unhandled json.Number type: " + typName + " for field " + i.FieldName)
-		case int64:
-			// int64 gets padded to 19 characters as the maximum value of an int64
-			// is 9223372036854775807
-			// @todo handle negative numbers
-			if i.Order.Type == OrderTypeDesc {
-				values = append(values, fmt.Sprintf("%019d", math.MaxInt64-v))
-				break
-			}
-			values = append(values, fmt.Sprintf("%019d", v))
-		case float64:
-			// @todo fix display and padding of floats
-			if i.Order.Type == OrderTypeDesc {
-				values = append(values, math.MaxFloat64-v)
-				break
-			}
-			values = append(values, v)
-		case int:
-			// int gets padded to the same length as int64 to gain
-			// resiliency in case of model type changes.
-			// This could be removed once migrations are implemented
-			// so savings in space for a type reflect in savings in space in the index too.
-			if i.Order.Type == OrderTypeDesc {
-				values = append(values, fmt.Sprintf("%019d", math.MaxInt32-v))
-				break
-			}
-			values = append(values, fmt.Sprintf("%019d", v))
-		case bool:
-			values = append(values, v)
-		default:
-			panic("bug in code, unhandled type: " + typName + " for field " + orderFieldKey)
+	switch v := orderFieldValue.(type) {
+	case string:
+		if i.Order.Type != OrderTypeUnordered {
+			values = append(values, d.getOrderedStringFieldKey(i, v))
+			break
 		}
+		values = append(values, v)
+	case int64:
+		// int64 gets padded to 19 characters as the maximum value of an int64
+		// is 9223372036854775807
+		// @todo handle negative numbers
+		if i.Order.Type == OrderTypeDesc {
+			values = append(values, fmt.Sprintf("%019d", math.MaxInt64-v))
+			break
+		}
+		values = append(values, fmt.Sprintf("%019d", v))
+	case float32:
+
+	case float64:
+		// @todo fix display and padding of floats
+		if i.Order.Type == OrderTypeDesc {
+			values = append(values, math.MaxFloat64-v)
+			break
+		}
+		values = append(values, v)
+	case int:
+		// int gets padded to the same length as int64 to gain
+		// resiliency in case of model type changes.
+		// This could be removed once migrations are implemented
+		// so savings in space for a type reflect in savings in space in the index too.
+		if i.Order.Type == OrderTypeDesc {
+			values = append(values, fmt.Sprintf("%019d", math.MaxInt32-v))
+			break
+		}
+		values = append(values, fmt.Sprintf("%019d", v))
+	case bool:
+		values = append(values, v)
+	default:
+		panic("bug in code, unhandled type: " + typName + " for field " + orderFieldKey)
 	}
 
 	if appendID {
