@@ -1,7 +1,10 @@
 package model
 
 import (
+	"fmt"
+	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/gofrs/uuid"
@@ -591,4 +594,149 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 	if users[0].ID != "1" || users[1].ID != "2" {
 		t.Fatal(users)
 	}
+}
+
+type TypeTest struct {
+	ID  string `json:"ID"`
+	F32 float32
+	F64 float64
+	I   int
+	I32 int32
+	I64 int64
+	S   string
+	B   bool
+}
+
+// Test aimed specifically to test all types
+func TestAllCombos(t *testing.T) {
+	// go over all filter + order combos
+	// for equality indexing
+
+	v := reflect.ValueOf(TypeTest{})
+	for filterFieldI := 0; filterFieldI < v.NumField(); filterFieldI++ {
+		filterField := v.Field(filterFieldI)
+		for orderFieldI := 0; orderFieldI < v.NumField(); orderFieldI++ {
+			orderField := v.Field(orderFieldI)
+
+			filterFieldName := v.Type().Field(filterFieldI).Name
+			orderFieldName := v.Type().Field(orderFieldI).Name
+			if filterFieldName == "ID" || orderFieldName == "ID" {
+				continue
+			}
+			if filterFieldName == orderFieldName {
+				continue
+			}
+
+			t.Run(fmt.Sprintf("Filter by %v, order by %v ASC", filterField.Type().Name(), orderField.Type().Name()), func(t *testing.T) {
+				index := ByEquality(filterFieldName)
+				index.Order.Type = OrderTypeAsc
+				index.Order.FieldName = orderFieldName
+
+				table := New(fs.NewStore(), TypeTest{}, Indexes(index), &ModelOptions{
+					Namespace: uuid.Must(uuid.NewV4()).String(),
+					Debug:     false,
+				})
+
+				small := TypeTest{
+					ID: "1",
+				}
+				v1 := getExampleValue(getFieldValue(small, orderFieldName), 1)
+				setFieldValue(&small, orderFieldName, v1)
+
+				large := TypeTest{
+					ID: "2",
+				}
+				v2 := getExampleValue(getFieldValue(large, orderFieldName), 2)
+				setFieldValue(&large, orderFieldName, v2)
+
+				err := table.Save(small)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = table.Save(large)
+				if err != nil {
+					t.Fatal(err)
+				}
+				results := []TypeTest{}
+				err = table.List(Equals(filterFieldName, nil), &results)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(results) < 2 {
+					t.Fatal(results)
+				}
+				if results[0].ID != "1" || results[1].ID != "2" {
+					t.Fatal("Results:", results, results[0].ID, results[1].ID)
+				}
+			})
+			t.Run(fmt.Sprintf("Filter by %v, order by %v DESC", filterField.Type().Name(), orderField.Type().Name()), func(t *testing.T) {
+				index := ByEquality(filterFieldName)
+				index.Order.Type = OrderTypeDesc
+				index.Order.FieldName = orderFieldName
+
+				table := New(fs.NewStore(), TypeTest{}, Indexes(index), &ModelOptions{
+					Namespace: uuid.Must(uuid.NewV4()).String(),
+					Debug:     false,
+				})
+
+				small := TypeTest{
+					ID: "1",
+				}
+				v1 := getExampleValue(getFieldValue(small, orderFieldName), 1)
+				setFieldValue(&small, orderFieldName, v1)
+
+				large := TypeTest{
+					ID: "2",
+				}
+				v2 := getExampleValue(getFieldValue(large, orderFieldName), 2)
+				setFieldValue(&large, orderFieldName, v2)
+
+				err := table.Save(small)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = table.Save(large)
+				if err != nil {
+					t.Fatal(err)
+				}
+				results := []TypeTest{}
+				err = table.List(index.ToQuery(nil), &results)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(results) < 2 {
+					t.Fatal(results)
+				}
+				if results[0].ID != "2" || results[1].ID != "1" {
+					t.Fatal("Results:", results, results[0].ID, results[1].ID)
+				}
+			})
+		}
+	}
+}
+
+// returns an example value generated
+// nth = each successive number should cause this
+// function to return a "bigger value" for each type
+func getExampleValue(i interface{}, nth int) interface{} {
+	switch v := i.(type) {
+	case string:
+		return strings.Repeat("a", nth)
+	case bool:
+		if nth == 1 {
+			return false
+		}
+		return true
+	case float32:
+		return v + float32(nth) + .1
+	case float64:
+		return v + float64(nth) + 0.1
+	case int:
+		return v + nth
+	case int32:
+		return v + int32(nth)
+	case int64:
+		return v + int64(nth)
+	}
+	return nil
 }

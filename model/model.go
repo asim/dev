@@ -118,6 +118,10 @@ type Index struct {
 	// True = base32 encode ordered strings for easier management
 	// or false = keep 4 bytes long runes that might dispaly weirdly
 	Base32Encode bool
+
+	FloatFormat string
+	Float64Max  float64
+	Float32Max  float32
 }
 
 type Order struct {
@@ -151,6 +155,9 @@ func ByEquality(fieldName string) Index {
 		},
 		StringOrderPadLength: 16,
 		Base32Encode:         false,
+		FloatFormat:          "%019.5f",
+		Float64Max:           92233720368547,
+		Float32Max:           922337,
 	}
 }
 
@@ -259,11 +266,16 @@ func (d *model) Save(instance interface{}) error {
 func getFieldValue(struc interface{}, field string) interface{} {
 	r := reflect.ValueOf(struc)
 	f := reflect.Indirect(r).FieldByName(strings.Title(field))
+
+	if !f.IsValid() {
+		return reflect.Zero(f.Type())
+	}
 	return f.Interface()
 }
 
 func setFieldValue(struc interface{}, field string, value interface{}) {
 	r := reflect.ValueOf(struc)
+
 	f := reflect.Indirect(r).FieldByName(strings.Title(field))
 	f.Set(reflect.ValueOf(value))
 }
@@ -284,6 +296,9 @@ func (d *model) Read(query Query, resultPointer interface{}) error {
 			}
 			if len(recs) > 1 {
 				return ErrorMultipleRecordsFound
+			}
+			if d.options.Debug {
+				fmt.Printf("Found value '%v'\n", string(recs[0].Value))
 			}
 			return json.Unmarshal(recs[0].Value, resultPointer)
 		}
@@ -311,6 +326,9 @@ func (d *model) List(query Query, resultSlicePointer interface{}) error {
 				}
 			}
 			jsBuffer = append(jsBuffer, []byte("]")...)
+			if d.options.Debug {
+				fmt.Printf("Found values '%v'\n", string(jsBuffer))
+			}
 			return json.Unmarshal(jsBuffer, resultSlicePointer)
 		}
 	}
@@ -406,14 +424,19 @@ func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID 
 		}
 		values = append(values, fmt.Sprintf("%019d", v))
 	case float32:
-
+		// @todo fix display and padding of floats
+		if i.Order.Type == OrderTypeDesc {
+			values = append(values, fmt.Sprintf(i.FloatFormat, i.Float32Max-v))
+			break
+		}
+		values = append(values, fmt.Sprintf(i.FloatFormat, v))
 	case float64:
 		// @todo fix display and padding of floats
 		if i.Order.Type == OrderTypeDesc {
-			values = append(values, math.MaxFloat64-v)
+			values = append(values, fmt.Sprintf(i.FloatFormat, i.Float64Max-v))
 			break
 		}
-		values = append(values, v)
+		values = append(values, fmt.Sprintf(i.FloatFormat, v))
 	case int:
 		// int gets padded to the same length as int64 to gain
 		// resiliency in case of model type changes.
@@ -424,7 +447,20 @@ func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID 
 			break
 		}
 		values = append(values, fmt.Sprintf("%019d", v))
+	case int32:
+		// int gets padded to the same length as int64 to gain
+		// resiliency in case of model type changes.
+		// This could be removed once migrations are implemented
+		// so savings in space for a type reflect in savings in space in the index too.
+		if i.Order.Type == OrderTypeDesc {
+			values = append(values, fmt.Sprintf("%019d", math.MaxInt32-v))
+			break
+		}
+		values = append(values, fmt.Sprintf("%019d", v))
 	case bool:
+		if i.Order.Type == OrderTypeDesc {
+			v = !v
+		}
 		values = append(values, v)
 	default:
 		panic("bug in code, unhandled type: " + typName + " for field " + orderFieldKey)
@@ -439,14 +475,22 @@ func (d *model) indexToKey(i Index, id interface{}, entry interface{}, appendID 
 
 // indexPrefix returns the first part of the keys, the namespace + index name
 func indexPrefix(i Index) string {
-	if i.Order.Type != OrderTypeUnordered {
-		desc := ""
-		if i.Order.Type == OrderTypeDesc {
-			desc = "Desc"
-		}
-		return fmt.Sprintf("by%vOrdered%v", desc, strings.Title(i.FieldName))
+	var ordering string
+	switch i.Order.Type {
+	case OrderTypeUnordered:
+		ordering = "Unord"
+	case OrderTypeAsc:
+		ordering = "Asc"
+	case OrderTypeDesc:
+		ordering = "Desc"
 	}
-	return fmt.Sprintf("by%v", strings.Title(i.FieldName))
+	typ := i.Type
+	orderingField := i.Order.FieldName
+	if len(orderingField) == 0 {
+		orderingField = i.FieldName
+	}
+	filterField := i.FieldName
+	return fmt.Sprintf("%vBy%v%vBy%v", typ, strings.Title(filterField), ordering, strings.Title(orderingField))
 }
 
 // pad, reverse and optionally base32 encode string keys
