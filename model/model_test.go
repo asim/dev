@@ -25,14 +25,14 @@ func TestEqualsByID(t *testing.T) {
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
 
-	err := table.Save(User{
+	err := table.Create(User{
 		ID:  "1",
 		Age: 12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "2",
 		Age: 25,
 	})
@@ -42,7 +42,7 @@ func TestEqualsByID(t *testing.T) {
 	users := []User{}
 	q := Equals("ID", "1")
 	q.Order.Type = OrderTypeUnordered
-	err = table.List(q, &users)
+	err = table.Read(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "1",
 		Age: 25,
 	})
@@ -77,7 +77,7 @@ func TestRead(t *testing.T) {
 		t.Fatal(user)
 	}
 
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "2",
 		Age: 25,
 	})
@@ -96,21 +96,21 @@ func TestEquals(t *testing.T) {
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
 
-	err := table.Save(User{
+	err := table.Create(User{
 		ID:  "1",
 		Age: 12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "2",
 		Age: 25,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "3",
 		Age: 12,
 	})
@@ -118,7 +118,7 @@ func TestEquals(t *testing.T) {
 		t.Fatal(err)
 	}
 	users := []User{}
-	err = table.List(Equals("age", 12), &users)
+	err = table.Read(Equals("age", 12), &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestOrderingStrings(t *testing.T) {
 			Namespace: uuid.Must(uuid.NewV4()).String(),
 		})
 		for _, key := range c.tags {
-			err := table.Save(User{
+			err := table.Create(User{
 				ID:  uuid.Must(uuid.NewV4()).String(),
 				Tag: key,
 			})
@@ -189,7 +189,7 @@ func TestOrderingStrings(t *testing.T) {
 		if c.reverse {
 			q.Order.Type = OrderTypeDesc
 		}
-		err := table.List(q, &users)
+		err := table.Read(q, &users)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,7 +246,7 @@ func TestOrderingNumbers(t *testing.T) {
 			Namespace: uuid.Must(uuid.NewV4()).String(),
 		})
 		for _, key := range c.dates {
-			err := table.Save(User{
+			err := table.Create(User{
 				ID:      uuid.Must(uuid.NewV4()).String(),
 				Created: int64(key),
 			})
@@ -259,7 +259,7 @@ func TestOrderingNumbers(t *testing.T) {
 		if c.reverse {
 			q.Order.Type = OrderTypeDesc
 		}
-		err := table.List(q, &users)
+		err := table.Read(q, &users)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -290,14 +290,14 @@ func TestStaleIndexRemoval(t *testing.T) {
 	table := New(fs.NewStore(), User{}, Indexes(tagIndex), &ModelOptions{
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
-	err := table.Save(User{
+	err := table.Create(User{
 		ID:  "1",
 		Tag: "hi-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "1",
 		Tag: "hello-there",
 	})
@@ -305,7 +305,7 @@ func TestStaleIndexRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := []User{}
-	err = table.List(Equals("tag", nil), &res)
+	err = table.Read(Equals("tag", nil), &res)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,26 +320,26 @@ func TestUniqueIndex(t *testing.T) {
 	table := New(fs.NewStore(), User{}, Indexes(tagIndex), &ModelOptions{
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
-	err := table.Save(User{
+	err := table.Create(User{
 		ID:  "1",
 		Tag: "hi-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "2",
 		Tag: "hello-there",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:  "3",
 		Tag: "hi-there",
 	})
 	if err == nil {
-		t.Fatal("Save shoud fail with duplicate tag error because the index is unique")
+		t.Fatal("Create shoud fail with duplicate tag error because the index is unique")
 	}
 }
 
@@ -358,14 +358,14 @@ func TestNonIDKeys(t *testing.T) {
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
 
-	err := table.Save(Tag{
+	err := table.Create(Tag{
 		Slug: "1",
 		Age:  12,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(Tag{
+	err = table.Create(Tag{
 		Slug: "2",
 		Age:  25,
 	})
@@ -375,7 +375,7 @@ func TestNonIDKeys(t *testing.T) {
 	users := []User{}
 	q := Equals("slug", "1")
 	q.Order.Type = OrderTypeUnordered
-	err = table.List(q, &users)
+	err = table.Read(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestNonIDKeys(t *testing.T) {
 
 // This might be an almost duplicate test, I used it to try reproduce an issue
 // Leaving this here for now as we dont have enough tests anyway.
-func TestListByString(t *testing.T) {
+func TestReadByString(t *testing.T) {
 	slugIndex := ByEquality("slug")
 	slugIndex.Order.Type = OrderTypeUnordered
 
@@ -397,14 +397,14 @@ func TestListByString(t *testing.T) {
 		Namespace: uuid.Must(uuid.NewV4()).String(),
 	})
 
-	err := table.Save(Tag{
+	err := table.Create(Tag{
 		Slug: "1",
 		Type: "post-tag",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(Tag{
+	err = table.Create(Tag{
 		Slug: "2",
 		Type: "post-tag",
 	})
@@ -413,7 +413,7 @@ func TestListByString(t *testing.T) {
 	}
 	tags := []Tag{}
 	q := Equals("type", "post-tag")
-	err = table.List(q, &tags)
+	err = table.Read(q, &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 		Debug:     false,
 	})
 
-	err := table.Save(Tag{
+	err := table.Create(Tag{
 		Slug: "1",
 		Type: "post-tag",
 		Age:  15,
@@ -445,7 +445,7 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(Tag{
+	err = table.Create(Tag{
 		Slug: "2",
 		Type: "post-tag",
 		Age:  25,
@@ -453,7 +453,7 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(Tag{
+	err = table.Create(Tag{
 		Slug: "3",
 		Type: "other-tag",
 		Age:  30,
@@ -462,7 +462,7 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 		t.Fatal(err)
 	}
 	tags := []Tag{}
-	err = table.List(typeIndex.ToQuery("post-tag"), &tags)
+	err = table.Read(typeIndex.ToQuery("post-tag"), &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestOderByDifferentFieldThanFilterField(t *testing.T) {
 		t.Fatal(tags)
 	}
 
-	err = table.List(typeIndex.ToQuery(nil), &tags)
+	err = table.Read(typeIndex.ToQuery(nil), &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,14 +496,14 @@ func TestDeleteIndexCleanup(t *testing.T) {
 		Debug:     false,
 	})
 
-	err := table.Save(Tag{
+	err := table.Create(Tag{
 		Slug: "1",
 		Type: "post-tag",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = table.Save(Tag{
+	err = table.Create(Tag{
 		Slug: "2",
 		Type: "post-tag",
 	})
@@ -512,7 +512,7 @@ func TestDeleteIndexCleanup(t *testing.T) {
 	}
 	tags := []Tag{}
 	q := Equals("type", "post-tag")
-	err = table.List(q, &tags)
+	err = table.Read(q, &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +526,7 @@ func TestDeleteIndexCleanup(t *testing.T) {
 	}
 
 	q = Equals("type", "post-tag")
-	err = table.List(q, &tags)
+	err = table.Read(q, &tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +545,7 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 		Debug:     false,
 	})
 
-	err := table.Save(User{
+	err := table.Create(User{
 		ID:      "1",
 		Age:     12,
 		Updated: 5000,
@@ -554,7 +554,7 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:      "2",
 		Age:     25,
 		Updated: 5001,
@@ -564,7 +564,7 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 	}
 	users := []User{}
 	q := updIndex.ToQuery(nil)
-	err = table.List(q, &users)
+	err = table.Read(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +575,7 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 		t.Fatal(users)
 	}
 
-	err = table.Save(User{
+	err = table.Create(User{
 		ID:      "1",
 		Age:     12,
 		Updated: 5002,
@@ -584,7 +584,7 @@ func TestUpdateDeleteIndexMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = table.List(q, &users)
+	err = table.Read(q, &users)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -649,16 +649,16 @@ func TestAllCombos(t *testing.T) {
 				v2 := getExampleValue(getFieldValue(large, orderFieldName), 2)
 				setFieldValue(&large, orderFieldName, v2)
 
-				err := table.Save(small)
+				err := table.Create(small)
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = table.Save(large)
+				err = table.Create(large)
 				if err != nil {
 					t.Fatal(err)
 				}
 				results := []TypeTest{}
-				err = table.List(Equals(filterFieldName, nil), &results)
+				err = table.Read(Equals(filterFieldName, nil), &results)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -691,16 +691,16 @@ func TestAllCombos(t *testing.T) {
 				v2 := getExampleValue(getFieldValue(large, orderFieldName), 2)
 				setFieldValue(&large, orderFieldName, v2)
 
-				err := table.Save(small)
+				err := table.Create(small)
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = table.Save(large)
+				err = table.Create(large)
 				if err != nil {
 					t.Fatal(err)
 				}
 				results := []TypeTest{}
-				err = table.List(index.ToQuery(nil), &results)
+				err = table.Read(index.ToQuery(nil), &results)
 				if err != nil {
 					t.Fatal(err)
 				}

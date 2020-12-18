@@ -56,14 +56,14 @@ type model struct {
 // Model represents a place where data can be saved to and
 // queried from.
 type Model interface {
-	// Save any object. Maintains indexes set up.
-	Save(interface{}) error
-	// List objects by a query. Each query requires an appropriate index
-	// to exist. List throws an error if a matching index can't be found.
-	List(query Query, resultSlicePointer interface{}) error
-	// Same as list, but accepts pointer to non slices and
-	// expects to find only one element. Throws error if not found
-	// or if more than two elements are found.
+	// Create a new object. (Maintains indexes set up)
+	Create(v interface{}) error
+	// TODO: add Update type which reads existing record and modifies
+	// Make use of "sync" interface to lock, read, write, unlock
+	Update(v interface{}) error
+	// Read accepts a pointer to a value and expects to fine one or more
+	// elements. Read throws an error if a value is not found or we can't
+	// find a matching index for a slice based query.
 	Read(query Query, resultPointer interface{}) error
 	// Deletes a record. Delete only support Equals("id", value) for now.
 	// @todo Delete only supports string keys for now.
@@ -189,7 +189,7 @@ func Equals(fieldName string, value interface{}) Query {
 	}
 }
 
-func (d *model) Save(instance interface{}) error {
+func (d *model) Create(instance interface{}) error {
 	// @todo replace this hack with reflection
 	js, err := json.Marshal(instance)
 	if err != nil {
@@ -273,6 +273,11 @@ func getFieldValue(struc interface{}, field string) interface{} {
 	return f.Interface()
 }
 
+// TODO: implement the full functionality. Currently offloads to create.
+func (d *model) Update(v interface{}) error {
+	return d.Create(v)
+}
+
 func setFieldValue(struc interface{}, field string, value interface{}) {
 	r := reflect.ValueOf(struc)
 
@@ -281,6 +286,22 @@ func setFieldValue(struc interface{}, field string, value interface{}) {
 }
 
 func (d *model) Read(query Query, resultPointer interface{}) error {
+	t := reflect.TypeOf(resultPointer)
+
+	// check if it's a pointer
+	if v := t.Kind(); v != reflect.Ptr {
+		return fmt.Errorf("Require pointer type. Got %v", v)
+	}
+
+	// retrieve the non pointer type
+	t = t.Elem()
+
+	// if its a slice then use the list query method
+	if t.Kind() == reflect.Slice {
+		return d.List(query, resultPointer)
+	}
+
+	// otherwise continue on as normal
 	for _, index := range append(d.indexes, d.options.IdIndex) {
 		if indexMatchesQuery(index, query) {
 			k := d.queryToListKey(index, query)
