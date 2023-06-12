@@ -23,7 +23,7 @@ email: asim@micro.mu
 description: "API first development platform"
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
-twitter_username: microhq
+twitter_username: microdotdev
 github_username:  micro
 google_analytics: "G-R7R0EC6LWK"
 #logo: "/images/micro.png"
