@@ -34,5 +34,5 @@ Yes. In v2 and beyond micro makes use of gRPC by default.
 ## What's the difference between Micro and Go Micro?
 
 Go Micro was an early attempt at building a framework for Go microservices development. We've since shifted our focus entirely to Micro, 
-a platform for cloud native development which includes a server, command line and service framework (previously go-micro). Go Micro has 
-been moved to [asim/go-micro](https://github.com/asim/go-micro).
+a platform for API driven development which includes a server, command line and service framework. Go Micro has 
+been moved to the [go-micro](https://github.com/go-micro) org.
