@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/micro/micro/v3/service/store"
+	"micro.dev/v4/service/store"
 )
 
 var (
