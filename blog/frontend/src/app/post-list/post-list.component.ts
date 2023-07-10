@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { M3oService } from '../m3o.service';
+import { MicroService } from '../micro.service';
 
 @Component({
   selector: 'app-post-list',
@@ -7,10 +7,10 @@ import { M3oService } from '../m3o.service';
   styleUrls: ['./post-list.component.css']
 })
 export class PostListComponent implements OnInit {
-  m3o: M3oService;
+  m3o: MicroService;
   posts: Object[];
 
-  constructor(m3o: M3oService) {
+  constructor(m3o: MicroService) {
     this.m3o = m3o
   }
 

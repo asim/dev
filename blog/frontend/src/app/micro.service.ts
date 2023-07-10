@@ -5,9 +5,9 @@ import { environment } from '../environments/environment';
 @Injectable({
   providedIn: 'root'
 })
-export class M3oService {
-  public address: string = environment.m3oAddress;
-  public namespace: string = environment.m3oNamespace;
+export class MicroService {
+  public address: string = environment.microAddress;
+  public namespace: string = environment.microNamespace;
 
   constructor(private http: HttpClient) { }
 

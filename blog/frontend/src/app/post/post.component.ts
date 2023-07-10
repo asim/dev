@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { M3oService } from '../m3o.service';
+import { MicroService } from '../micro.service';
 import { HttpParams } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 
@@ -12,7 +12,7 @@ export class PostComponent implements OnInit {
   post: Object;
   comments: Object[];
 
-  constructor(private m3o: M3oService, private route: ActivatedRoute) {}
+  constructor(private m3o: MicroService, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
     const that = this

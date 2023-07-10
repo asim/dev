@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 
-import { M3oService } from './m3o.service';
+import { MicroService } from './micro.service';
 
-describe('M3oService', () => {
-  let service: M3oService;
+describe('MicroService', () => {
+  let service: MicroService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({});
-    service = TestBed.inject(M3oService);
+    service = TestBed.inject(MicroService);
   });
 
   it('should be created', () => {
