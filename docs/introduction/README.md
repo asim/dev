@@ -102,27 +102,23 @@ Micro is built with this Service development model in mind which is why the unde
 to write those along with accessing them from external means. Micro includes a Go service framework that makes it super 
 simple to get started fast.
 
-## Cloud Services
+## Micro Services
 
-We think the definition of a Cloud Service is one that helps you build the next Twilio or Stripe. Cloud services are looking 
+We think the definition of a Micro Service is one that helps you build the next Twilio or Stripe. Micro services are looking 
 more and more like something built to be consumed entirely as an API. So Micro builds with that model in mind. You write 
-microservices on the backend and stitch them together as a single API for the frontend.
+Micro services on the backend and stitch them together as a single API for the frontend.
 
 Micro provides an API gateway that handles HTTP/JSON requests externally and converts them to gRPC for the backend. This 
 massively simplifies the experience of building efficient highly performant services on the backend which are decoupled 
 from each other but presenting a single view to the consumers.
 
-## Remote First
+## Cloud First
 
-Micro was built with the knowledge that not only do we exist in a multi-environment model but one that's remote first. Because 
+Micro was built with the knowledge that not only do we exist in a multi-environment model but one that's cloud first. Because 
 of that we build in a gRPC identity proxy for CLI and local services that enables you to remotely connect to any Micro server 
 securely and access those services and resources with your credentials stored in the Auth service.
 
 You can assume not only are your services built for a Cloud first era but that your access to them is in that manner also.
-
-## Micro Services
-
-Check out the [Micro Services](https://github.com/micro/services) repository for real world reusable services.
 
 ## Getting Started
 
