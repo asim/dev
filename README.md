@@ -1,5 +1,5 @@
 # Micro Dev
 
-Documentation and related things
+Website, docs and related things
 
 Go to [micro.dev](https://micro.dev) to get started
