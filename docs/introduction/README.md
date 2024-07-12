@@ -20,26 +20,19 @@ This is a high level introduction to Micro
 
 ## About
 
-Micro is a platform for cloud native development. It addresses the key requirements for building services in the cloud. 
+Micro is a platform for API service development. It addresses the key requirements for building services in the cloud. 
 Micro leverages the microservices architecture pattern and provides a set of services which act as the building blocks of a 
 platform. Micro deals with the complexity of distributed systems and provides simpler programmable abstractions to build on.
 
 <img src="{{ site.baseurl }}/images/micro.png" />
 
-Micro is the all encompassing end to end platform experience from source to running and beyond built with a developer first focus.
-
 ## Goals
 
-Micro's goal is to abstract away the complexity of building services for the Cloud. The cloud itself has gone through a huge 
-boom through managed Compute and infrastructure services from the likes of AWS and others. It's taken what was an operational 
-burden and turned it into a suite of fully managed on demand services which can be used via APIs.
-
-This has opened up the category of Cloud as Mobile did in the early 2000s but it has yet to define a development model to 
-effectively leverage these services. In fact we think the definition of a "Cloud Service" is yet to be determined and 
-the category of Cloud will likely shift to a vertically integrated solution that looks more like an operating system 
-bundled with cloud infrastructure rather than self installation and management.
-
-Think of Micro as Android for Cloud.
+Micro's goal is to abstract away the complexity of building services for the Cloud. The cloud itself went through a 
+boom with managed compute and infrastructure emerging from the likes of AWS. It's taken what was an operational
+burden and turned it into a suite of fully managed services accessed via APIs. But now building services 
+in the cloud has become more complicated than before. Micro looks to ease some of that pain through a single 
+platform as a service like approach.
 
 ## Features
 
@@ -64,10 +57,9 @@ The server is composed of the following services.
 - **Registry** - Centralised service discovery and API endpoint explorer with feature rich metadata
 - **Store** - Key-Value storage with TTL expiry and persistent crud to keep microservices stateless
 
-**Framework**
+**Go SDK**
 
-Micro additionally contains a built in Go framework for service development. 
-The Go framework makes it drop dead simple to write your services without having to piece together lines and lines of boilerplate. Auto 
+Micro includes a Go SDK for service development. The Go SDK makes it drop dead simple to write your services without having to piece together lines and lines of boilerplate. Auto 
 configured and initialised by default, just import and get started quickly.
 
 **Command Line**
@@ -77,18 +69,18 @@ dynamic command mapping for all services running on the platform. Turns any serv
 for inputs. Includes support for multiple environments and namespaces, automatic refreshing of auth credentials, creating and running 
 services, status info and log streaming, plus much, much more.
 
-**Dashboard**
+**Web Dashboard**
 
 Explore, discover and consume services via the browser using Micro Web. The dashboard makes use of your env configuration to locate the server 
 and provides dynamic form fill for services.
 
-**Environments**
+**Remote Environments**
 
 Finally Micro bakes in the concept of `Environments` and multi-tenancy through `Namespaces`. Run your server locally for 
 development and in the cloud for staging and production, seamlessly switch between them using the CLI commands `micro env set [environment]` 
 and `micro user set [namespace]`.
 
-## Development
+## Service Development
 
 Micro focuses on the microservices development model, which takes from the unix philosophy of writing tools that do one thing well. 
 We think the domain boundary you've come to know at the database table level in Rails monolithic web apps moves to service 
@@ -112,7 +104,7 @@ Micro provides an API gateway that handles HTTP/JSON requests externally and con
 massively simplifies the experience of building efficient highly performant services on the backend which are decoupled 
 from each other but presenting a single view to the consumers.
 
-## Cloud First
+## Multi Cloud
 
 Micro was built with the knowledge that not only do we exist in a multi-environment model but one that's cloud first. Because 
 of that we build in a gRPC identity proxy for CLI and local services that enables you to remotely connect to any Micro server 
