@@ -94,7 +94,7 @@ Micro is built with this Service development model in mind which is why the unde
 to write those along with accessing them from external means. Micro includes a Go service framework that makes it super 
 simple to get started fast.
 
-## Micro Services
+## API First
 
 We think the definition of a Micro Service is one that helps you build the next Twilio or Stripe. Micro services are looking 
 more and more like something built to be consumed entirely as an API. So Micro builds with that model in mind. You write 
