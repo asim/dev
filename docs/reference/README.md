@@ -716,7 +716,7 @@ $ micro config get --secret helloworld
 {"hush_number_key":42,"hushkey":"Very secret stuff","someboolkey":true,"somekey":"hello"}
 ```
 
-#### Service Framework
+#### Go SDK
 
 It is similarly easy to access and set config values from a service.
 A good example of reading values is [the config example test service](https://github.com/micro/services/blob/master/test/conf):
